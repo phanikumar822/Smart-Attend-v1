@@ -1,0 +1,128 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Inter", sans-serif;
+  
+  /* Default Light Theme */
+  --color-background: #ffffff;
+  --color-foreground: #0f172a;
+  
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+  
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0f172a;
+  
+  --color-primary: #4f46e5; /* Indigo-600 */
+  --color-primary-foreground: #ffffff;
+  
+  --color-secondary: #0ea5e9; /* Sky-600 */
+  --color-secondary-foreground: #ffffff;
+  
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #64748b;
+  
+  --color-accent: #f8fafc;
+  --color-accent-foreground: #0f172a;
+  
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  
+  --color-border: #e2e8f0;
+  --color-input: #e2e8f0;
+  --color-ring: #6366f1;
+  
+  --shadow-soft: 0 20px 50px rgba(0, 0, 0, 0.1);
+  
+  --radius-lg: 12px;
+  --radius-md: 8px;
+  --radius-sm: 4px;
+}
+
+/* Dark Theme Overrides (True OLED Black) */
+:root.dark {
+  --color-background: #000000;
+  --color-foreground: #ffffff;
+  
+  --color-card: #080808;
+  --color-card-foreground: #ffffff;
+  
+  --color-popover: #000000;
+  --color-popover-foreground: #ffffff;
+  
+  --color-primary: #818cf8;
+  --color-primary-foreground: #000000;
+  
+  --color-secondary: #38bdf8;
+  --color-secondary-foreground: #000000;
+  
+  --color-muted: #111111;
+  --color-muted-foreground: #ffffff;
+  
+  --color-accent: #1e1e1e;
+  --color-accent-foreground: #ffffff;
+  
+  --color-destructive: #f43f5e;
+  --color-destructive-foreground: #000000;
+  
+  --color-border: #222222;
+  --color-input: #111111;
+  --color-ring: #818cf8;
+
+  --shadow-soft: 0 20px 50px rgba(0, 0, 0, 1);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased selection:bg-primary/30;
+    transition-property: background-color, color, border-color, text-decoration-color, fill, stroke;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 300ms;
+  }
+  h1, h2, h3, h4, .font-heading {
+    @apply font-heading tracking-tight font-black;
+  }
+}
+
+@layer utilities {
+  .glow-primary {
+    box-shadow: 0 0 40px -10px rgba(129, 140, 248, 0.6);
+  }
+  .glass {
+    @apply bg-white dark:bg-black/95 border-border backdrop-blur-xl;
+  }
+  .formal-card {
+    @apply bg-card border border-border shadow-soft transition-all duration-300;
+    border-radius: 1rem;
+  }
+  .formal-card:hover {
+    @apply border-primary/30 bg-muted/50;
+  }
+}
+
+@keyframes scan {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10%, 90% { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+
+.animate-scan {
+  animation: scan 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";

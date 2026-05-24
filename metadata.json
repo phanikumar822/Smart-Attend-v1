@@ -1,0 +1,6 @@
+{
+  "name": "SmartAttend AI",
+  "description": "AI-powered smart attendance system with face recognition, admin analytics, and RAG chatbot.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["Face Recognition", "RAG Chatbot", "Analytics Dashboard"]
+}
