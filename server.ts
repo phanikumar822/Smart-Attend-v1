@@ -731,6 +731,22 @@ async function startServer() {
         
         doc.fontSize(11).fillColor('#334155').text((i + 1) + ". " + s.name, 50, startY);
         doc.fontSize(10).fillColor('#64748b').text("Roll: " + s.rollNo, 220, startY);
+        
+        // Display timing details directly on Page 1
+        let timingSummary = '';
+        if (latestSession && latestSession.scans) {
+          const scan = latestSession.scans.find(sc => sc.studentId.toString() === s._id.toString());
+          if (scan) {
+            const inTimeStr = scan.inTime ? new Date(scan.inTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '--:--';
+            const outTimeStr = scan.outTime ? new Date(scan.outTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'No Out';
+            timingSummary = "[In: " + inTimeStr + " | Out: " + outTimeStr + "]";
+          }
+        }
+        
+        if (timingSummary) {
+          doc.fontSize(9).fillColor('#64748b').text(timingSummary, 310, startY);
+        }
+        
         doc.fontSize(11).fillColor(color).text(s.attendancePercentage.toFixed(1) + "%", 450, startY, { align: 'right', width: 100 });
         
         doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke('#f1f5f9');
