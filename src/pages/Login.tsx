@@ -48,8 +48,8 @@ export default function Login({ setIsAuthenticated }: { setIsAuthenticated: (v: 
         <Card className="formal-card overflow-hidden border-white/5 bg-black/40 shadow-[0_0_100px_rgba(0,0,0,0.5)]">
           <div className="h-2 bg-gradient-to-r from-primary via-secondary to-primary animate-gradient-x" />
           <CardHeader className="space-y-4 text-center pt-12">
-            <div className="mx-auto w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mb-2 shadow-2xl shadow-primary/20">
-              <ShieldCheck size={32} />
+            <div className="mx-auto w-16 h-16 rounded-2xl overflow-hidden shadow-2xl shadow-primary/20 border border-white/10 bg-slate-950 mb-2">
+              <img src="/favicon.png" alt="SmartAttend.AI Logo" className="w-full h-full object-cover" />
             </div>
             <div className="space-y-2">
               <CardTitle className="text-5xl font-black tracking-tighter text-foreground font-heading leading-tight uppercase">Secure <span className="text-primary">Gateway</span></CardTitle>

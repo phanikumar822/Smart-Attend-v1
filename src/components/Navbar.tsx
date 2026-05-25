@@ -21,8 +21,8 @@ export default function Navbar({ isAuthenticated, setIsAuthenticated }: { isAuth
       <div className="container mx-auto px-6 h-20 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-3 group">
           <div className="relative">
-            <div className="w-12 h-12 bg-primary flex items-center justify-center text-primary-foreground rounded-2xl shadow-xl shadow-primary/30 transition-all duration-500 group-hover:scale-110 group-hover:rotate-6">
-              <Camera size={26} />
+            <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-xl shadow-primary/20 border border-white/10 transition-all duration-500 group-hover:scale-110 group-hover:rotate-6 bg-slate-950">
+              <img src="/favicon.png" alt="SmartAttend.AI Logo" className="w-full h-full object-cover" />
             </div>
             <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-[#020617] animate-pulse" />
           </div>

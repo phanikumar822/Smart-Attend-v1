@@ -44,8 +44,8 @@ export default function FounderLogin({ setIsFounderAuthenticated }: { setIsFound
         <Card className="formal-card overflow-hidden border-rose-500/20 bg-black/60 shadow-[0_0_120px_rgba(239,68,68,0.15)] backdrop-blur-md">
           <div className="h-2 bg-gradient-to-r from-rose-500 via-amber-500 to-rose-600 animate-gradient-x" />
           <CardHeader className="space-y-4 text-center pt-12">
-            <div className="mx-auto w-16 h-16 bg-rose-500/10 rounded-2xl flex items-center justify-center text-rose-500 mb-2 shadow-2xl shadow-rose-500/20 border border-rose-500/30">
-              <ShieldAlert size={32} />
+            <div className="mx-auto w-16 h-16 rounded-2xl overflow-hidden shadow-2xl shadow-rose-500/20 border border-rose-500/30 bg-slate-950 mb-2">
+              <img src="/favicon.png" alt="SmartAttend.AI Logo" className="w-full h-full object-cover" />
             </div>
             <div className="space-y-2">
               <CardTitle className="text-4xl font-black tracking-tighter text-foreground font-heading leading-tight uppercase">Founder <span className="text-rose-500">Terminal</span></CardTitle>
