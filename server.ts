@@ -786,23 +786,25 @@ async function startServer() {
           let outTimeStr = '--:--';
           let durationStr = '--';
           
-          if (isPresent && latestSession.scans) {
-            const scan = latestSession.scans.find(sc => sc.studentId.toString() === s._id.toString());
-            if (scan) {
-              if (scan.inTime) {
-                inTimeStr = new Date(scan.inTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-              }
-              if (scan.outTime) {
-                outTimeStr = new Date(scan.outTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-                const durationMs = new Date(scan.outTime).getTime() - new Date(scan.inTime).getTime();
-                const hours = durationMs / (1000 * 60 * 60);
-                durationStr = hours.toFixed(2) + " hrs";
-              } else {
-                outTimeStr = 'No Out-Scan';
-              }
-            } else {
-              inTimeStr = 'Manual';
+          const scan = latestSession.scans ? latestSession.scans.find(sc => sc.studentId.toString() === s._id.toString()) : null;
+          
+          if (scan) {
+            if (scan.inTime) {
+              inTimeStr = new Date(scan.inTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
             }
+            if (scan.outTime) {
+              outTimeStr = new Date(scan.outTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+              const durationMs = new Date(scan.outTime).getTime() - new Date(scan.inTime).getTime();
+              const hours = durationMs / (1000 * 60 * 60);
+              durationStr = hours.toFixed(2) + " hrs";
+            } else {
+              outTimeStr = 'No Out-Scan';
+              durationStr = 'Incomplete';
+            }
+          } else if (isPresent) {
+            inTimeStr = 'Manual';
+            outTimeStr = 'Manual';
+            durationStr = 'Override';
           }
 
           // Handle page break
