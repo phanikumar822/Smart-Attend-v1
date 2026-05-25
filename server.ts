@@ -703,6 +703,7 @@ async function startServer() {
       const students = await Student.find({ schoolId: req.schoolId, section: req.section });
       const sessions = await Attendance.find({ schoolId: req.schoolId, section: req.section }).sort({ date: -1 });
       const endedSessions = sessions.filter(s => s.sessionStatus === 'ended');
+      const latestSession = sessions[0];
 
       // --- PAGE 1: Overall Attendance Roster ---
       doc.fontSize(24).fillColor('#1e1b4b').text('SmartAttend AI', { align: 'left' });
@@ -754,7 +755,6 @@ async function startServer() {
       });
 
       // --- PAGE 2: Daily Session Timings (For latest active/ended session) ---
-      const latestSession = sessions[0];
       if (latestSession) {
         doc.addPage();
         
