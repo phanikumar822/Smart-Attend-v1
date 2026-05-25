@@ -711,7 +711,7 @@ async function startServer() {
       doc.moveDown();
       doc.fontSize(18).fillColor('#1e1b4b').text('Official Attendance Roster', { align: 'left' });
       doc.fontSize(10).fillColor('#94a3b8').text("Report ID: " + Math.random().toString(36).substring(7).toUpperCase());
-      doc.text("Generated: " + new Date().toLocaleString());
+      doc.text("Generated: " + new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour12: true }));
       doc.moveDown(2);
       
       // Summary Box
@@ -738,8 +738,8 @@ async function startServer() {
         if (latestSession && latestSession.scans) {
           const scan = latestSession.scans.find(sc => sc.studentId.toString() === s._id.toString());
           if (scan) {
-            const inTimeStr = scan.inTime ? new Date(scan.inTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : '--:--';
-            const outTimeStr = scan.outTime ? new Date(scan.outTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : 'No Out';
+            const inTimeStr = scan.inTime ? new Date(scan.inTime).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) : '--:--';
+            const outTimeStr = scan.outTime ? new Date(scan.outTime).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) : 'No Out';
             timingSummary = "[In: " + inTimeStr + " | Out: " + outTimeStr + "]";
           }
         }
@@ -806,10 +806,10 @@ async function startServer() {
           
           if (scan) {
             if (scan.inTime) {
-              inTimeStr = new Date(scan.inTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+              inTimeStr = new Date(scan.inTime).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
             }
             if (scan.outTime) {
-              outTimeStr = new Date(scan.outTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+              outTimeStr = new Date(scan.outTime).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
               const durationMs = new Date(scan.outTime).getTime() - new Date(scan.inTime).getTime();
               const hours = durationMs / (1000 * 60 * 60);
               durationStr = hours.toFixed(2) + " hrs";
@@ -1073,7 +1073,7 @@ async function startServer() {
         // Strict Two-Scan rule: Do not mark as present yet. Keep them in absentStudents.
         await session.save();
         return res.json({ 
-          message: "Checked In successfully at " + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ". Check-Out required to be marked present.", 
+          message: "Checked In successfully at " + now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) + ". Check-Out required to be marked present.", 
           type: "in", 
           student, 
           inTime: now 
@@ -1104,7 +1104,7 @@ async function startServer() {
         
         await session.save();
         return res.json({ 
-          message: "Checked Out successfully at " + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + "! Marked PRESENT.", 
+          message: "Checked Out successfully at " + now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) + "! Marked PRESENT.", 
           type: "out", 
           student, 
           inTime: scanRecord.inTime, 
