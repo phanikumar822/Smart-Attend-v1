@@ -143,6 +143,13 @@ async function startServer() {
     presentStudents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Student' }],
     absentStudents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Student' }],
     sessionStatus: { type: String, enum: ['active', 'ended'], default: 'ended' },
+    minGapHours: { type: Number, default: 1 },
+    scans: [{
+      studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
+      inTime: { type: Date, default: Date.now },
+      outTime: { type: Date },
+      allScans: [{ type: Date, default: Date.now }]
+    }]
   });
 
   const Student = mongoose.model("Student", studentSchema);
@@ -578,6 +585,9 @@ async function startServer() {
   app.post("/api/attendance/start", authenticate, async (req, res) => {
     try {
       const today = new Date().toISOString().split('T')[0];
+      const { minGapHours } = req.body;
+      const gapValue = minGapHours !== undefined ? Number(minGapHours) : 1;
+
       let session = await Attendance.findOne({ date: today, schoolId: req.schoolId, section: req.section });
       if (!session) {
         const allStudents = await Student.find({ schoolId: req.schoolId, section: req.section });
@@ -587,10 +597,13 @@ async function startServer() {
           date: today,
           presentStudents: [],
           absentStudents: allStudents.map(s => s._id),
-          sessionStatus: 'active'
+          sessionStatus: 'active',
+          minGapHours: gapValue,
+          scans: []
         });
       } else {
         session.sessionStatus = 'active';
+        session.minGapHours = gapValue;
       }
       await session.save();
       res.json(session);
@@ -688,23 +701,24 @@ async function startServer() {
       doc.pipe(res);
       
       const students = await Student.find({ schoolId: req.schoolId, section: req.section });
-      const sessions = await Attendance.find({ sessionStatus: 'ended', schoolId: req.schoolId, section: req.section });
-      
-      // Header Section
+      const sessions = await Attendance.find({ schoolId: req.schoolId, section: req.section }).sort({ date: -1 });
+      const endedSessions = sessions.filter(s => s.sessionStatus === 'ended');
+
+      // --- PAGE 1: Overall Attendance Roster ---
       doc.fontSize(24).fillColor('#1e1b4b').text('SmartAttend AI', { align: 'left' });
       doc.fontSize(10).fillColor('#64748b').text('INSTITUTIONAL INTEGRITY TERMINAL', { align: 'left' });
       doc.moveDown();
       doc.fontSize(18).fillColor('#1e1b4b').text('Official Attendance Roster', { align: 'left' });
-      doc.fontSize(10).fillColor('#94a3b8').text(`Report ID: ${Math.random().toString(36).substring(7).toUpperCase()}`);
-      doc.text(`Generated: ${new Date().toLocaleString()}`);
+      doc.fontSize(10).fillColor('#94a3b8').text("Report ID: " + Math.random().toString(36).substring(7).toUpperCase());
+      doc.text("Generated: " + new Date().toLocaleString());
       doc.moveDown(2);
       
       // Summary Box
       const startBoxY = doc.y;
       doc.rect(50, startBoxY, 512, 60).fillAndStroke('#f8fafc', '#e2e8f0');
       doc.fillColor('#1e1b4b').fontSize(12);
-      doc.text(`Total Valid Roster: ${students.length}`, 70, startBoxY + 15);
-      doc.text(`Total Archived Sessions: ${sessions.length}`, 70, startBoxY + 35);
+      doc.text("Total Valid Roster: " + students.length, 70, startBoxY + 15);
+      doc.text("Total Archived Sessions: " + endedSessions.length, 70, startBoxY + 35);
       doc.moveDown(3);
       
       // Student Table
@@ -715,13 +729,107 @@ async function startServer() {
         const color = s.attendancePercentage < 75 ? '#ef4444' : '#10b981';
         const startY = doc.y;
         
-        doc.fontSize(11).fillColor('#334155').text(`${i + 1}. ${s.name}`, 50, startY);
-        doc.fontSize(10).fillColor('#64748b').text(`Roll: ${s.rollNo}`, 220, startY);
-        doc.fontSize(11).fillColor(color).text(`${s.attendancePercentage.toFixed(1)}%`, 450, startY, { align: 'right', width: 100 });
+        doc.fontSize(11).fillColor('#334155').text((i + 1) + ". " + s.name, 50, startY);
+        doc.fontSize(10).fillColor('#64748b').text("Roll: " + s.rollNo, 220, startY);
+        doc.fontSize(11).fillColor(color).text(s.attendancePercentage.toFixed(1) + "%", 450, startY, { align: 'right', width: 100 });
         
         doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke('#f1f5f9');
         doc.moveDown(0.5);
       });
+
+      // --- PAGE 2: Daily Session Timings (For latest active/ended session) ---
+      const latestSession = sessions[0];
+      if (latestSession) {
+        doc.addPage();
+        
+        doc.fontSize(20).fillColor('#1e1b4b').text('Daily Session Timing Log', { align: 'left' });
+        doc.fontSize(12).fillColor('#64748b').text("Date: " + latestSession.date + " | Section: " + latestSession.section, { align: 'left' });
+        doc.fontSize(9).fillColor('#94a3b8').text("Scan Cooldown Config: " + (latestSession.minGapHours || 1) + " Hour(s)");
+        doc.moveDown(1.5);
+
+        // Table Header
+        const headerY = doc.y;
+        doc.fontSize(10).fillColor('#1e1b4b').font('Helvetica-Bold');
+        doc.text('Student Name (Roll)', 50, headerY);
+        doc.text('Status', 220, headerY);
+        doc.text('In-Time', 290, headerY);
+        doc.text('Out-Time', 380, headerY);
+        doc.text('Duration', 470, headerY);
+        doc.font('Helvetica');
+        
+        doc.moveTo(50, headerY + 15).lineTo(550, headerY + 15).stroke('#cbd5e1');
+        doc.moveDown(1.2);
+
+        // Combine present and absent list
+        const allStudentsInSession = [
+          ...latestSession.presentStudents.map(sId => ({ studentId: sId.toString(), present: true })),
+          ...latestSession.absentStudents.map(sId => ({ studentId: sId.toString(), present: false }))
+        ];
+
+        // Resolve student profiles from ID
+        const resolvedList = [];
+        allStudentsInSession.forEach(item => {
+          const profile = students.find(s => s._id.toString() === item.studentId);
+          if (profile) {
+            resolvedList.push({ profile, present: item.present });
+          }
+        });
+
+        // Sort alphabetically
+        resolvedList.sort((a, b) => a.profile.name.localeCompare(b.profile.name));
+
+        resolvedList.forEach((item) => {
+          const s = item.profile;
+          const isPresent = item.present;
+          
+          let inTimeStr = '--:--';
+          let outTimeStr = '--:--';
+          let durationStr = '--';
+          
+          if (isPresent && latestSession.scans) {
+            const scan = latestSession.scans.find(sc => sc.studentId.toString() === s._id.toString());
+            if (scan) {
+              if (scan.inTime) {
+                inTimeStr = new Date(scan.inTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+              }
+              if (scan.outTime) {
+                outTimeStr = new Date(scan.outTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                const durationMs = new Date(scan.outTime).getTime() - new Date(scan.inTime).getTime();
+                const hours = durationMs / (1000 * 60 * 60);
+                durationStr = hours.toFixed(2) + " hrs";
+              } else {
+                outTimeStr = 'No Out-Scan';
+              }
+            } else {
+              inTimeStr = 'Manual';
+            }
+          }
+
+          // Handle page break
+          if (doc.y > 700) {
+            doc.addPage();
+            doc.fontSize(10).fillColor('#64748b').text("Daily Session Timing Log (" + latestSession.date + ") - Continued...", 50, 40);
+            doc.moveTo(50, 55).lineTo(550, 55).stroke('#cbd5e1');
+            doc.moveDown(2);
+          }
+
+          const rowY = doc.y;
+          doc.fontSize(9).fillColor('#334155');
+          doc.text(s.name + " (" + s.rollNo + ")", 50, rowY, { width: 160 });
+          
+          const statusColor = isPresent ? '#10b981' : '#ef4444';
+          doc.fillColor(statusColor).font('Helvetica-Bold');
+          doc.text(isPresent ? 'PRESENT' : 'ABSENT', 220, rowY);
+          
+          doc.fillColor('#475569').font('Helvetica');
+          doc.text(inTimeStr, 290, rowY);
+          doc.text(outTimeStr, 380, rowY);
+          doc.text(durationStr, 470, rowY);
+          
+          doc.moveTo(50, rowY + 15).lineTo(550, rowY + 15).stroke('#f1f5f9');
+          doc.moveDown(0.8);
+        });
+      }
       
       doc.end();
     } catch (err) {
@@ -814,6 +922,27 @@ async function startServer() {
       
       if (session) {
         session.sessionStatus = 'ended';
+
+        // Strict two-scan cleanup: Any student marked present must have a complete check-out scan
+        if (session.scans && session.scans.length > 0) {
+          const newPresentStudents = [];
+          
+          session.scans.forEach((scan) => {
+            if (scan.inTime && scan.outTime) {
+              newPresentStudents.push(scan.studentId);
+            }
+          });
+          
+          // Preserve manual overrides (instructor forced present in admin dashboard)
+          const scannedStudentIds = new Set(session.scans.map(sc => sc.studentId.toString()));
+          session.presentStudents.forEach((studentId) => {
+            if (!scannedStudentIds.has(studentId.toString())) {
+              newPresentStudents.push(studentId);
+            }
+          });
+
+          session.presentStudents = newPresentStudents;
+        }
         
         const allStudents = await Student.find({ schoolId: req.schoolId, section: req.section });
         const presentIds = new Set(session.presentStudents.map(id => id.toString()));
@@ -908,13 +1037,62 @@ async function startServer() {
       const student = await Student.findOne({ rollNo, schoolId: req.schoolId, section: req.section });
       if (!student) return res.status(404).json({ error: "Student not found" });
 
-      if (!session.presentStudents.includes(student._id)) {
-        session.presentStudents.push(student._id);
-        session.absentStudents = session.absentStudents.filter(id => id.toString() !== student._id.toString());
-        await session.save();
+      if (!session.scans) {
+        (session as any).scans = [];
       }
 
-      res.json({ message: "Attendance marked", student });
+      let scanRecord = session.scans.find(s => s.studentId.toString() === student._id.toString());
+      const now = new Date();
+
+      if (!scanRecord) {
+        // First scan (Check-In)
+        session.scans.push({
+          studentId: student._id,
+          inTime: now,
+          allScans: [now]
+        });
+
+        // Strict Two-Scan rule: Do not mark as present yet. Keep them in absentStudents.
+        await session.save();
+        return res.json({ 
+          message: "Checked In successfully at " + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ". Check-Out required to be marked present.", 
+          type: "in", 
+          student, 
+          inTime: now 
+        });
+      } else {
+        // Subsequent scan (Check-Out)
+        const lastScan = scanRecord.allScans[scanRecord.allScans.length - 1];
+        const diffMs = now.getTime() - new Date(lastScan).getTime();
+        const diffHours = diffMs / (1000 * 60 * 60);
+        const minGap = session.minGapHours || 1;
+
+        if (diffHours < minGap) {
+          const remainingMinutes = Math.ceil((minGap - diffHours) * 60);
+          return res.status(400).json({ 
+            error: "Already checked in recently. Cooldown active. Please wait " + remainingMinutes + " minute(s) to check out." 
+          });
+        }
+
+        // Complete Check-Out
+        scanRecord.outTime = now;
+        scanRecord.allScans.push(now);
+
+        // Move to presentStudents roster
+        if (!session.presentStudents.some(id => id.toString() === student._id.toString())) {
+          session.presentStudents.push(student._id);
+        }
+        session.absentStudents = session.absentStudents.filter(id => id.toString() !== student._id.toString());
+        
+        await session.save();
+        return res.json({ 
+          message: "Checked Out successfully at " + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + "! Marked PRESENT.", 
+          type: "out", 
+          student, 
+          inTime: scanRecord.inTime, 
+          outTime: now 
+        });
+      }
     } catch (err) {
       console.error('API Error /attendance/mark:', err);
       res.status(500).json({ error: "Failed to mark attendance" });

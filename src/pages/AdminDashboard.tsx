@@ -24,6 +24,7 @@ export default function AdminDashboard() {
   const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'high' | 'low'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
+  const [minGapHours, setMinGapHours] = useState<number>(1);
 
   // Reset to page 1 when search or filter changes
   useEffect(() => {
@@ -60,7 +61,7 @@ export default function AdminDashboard() {
 
   const handleStartSession = async () => {
     try {
-      await api.post('/attendance/start');
+      await api.post('/attendance/start', { minGapHours });
       toast.success('Attendance session started');
       fetchData();
     } catch (err) {
@@ -212,9 +213,26 @@ export default function AdminDashboard() {
               </Button>
             </>
           ) : (
-            <Button className="h-12 px-8 gap-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-black uppercase tracking-widest shadow-xl shadow-primary/30 transition-all hover:scale-[1.02] active:scale-95" onClick={handleStartSession}>
-              <Play size={20} className="fill-current" /> Initialize Session
-            </Button>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 border border-border bg-background/50 rounded-xl px-3 py-2 shadow-inner">
+                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">SCAN COOLDOWN:</span>
+                <select 
+                  value={minGapHours} 
+                  onChange={(e) => setMinGapHours(Number(e.target.value))}
+                  className="bg-transparent text-foreground rounded text-xs font-bold focus:outline-none cursor-pointer border-none p-0"
+                >
+                  <option value={0.001}>None (Testing)</option>
+                  <option value={0.5}>30 Mins</option>
+                  <option value={1}>1 Hour</option>
+                  <option value={2}>2 Hours</option>
+                  <option value={4}>4 Hours</option>
+                  <option value={8}>8 Hours</option>
+                </select>
+              </div>
+              <Button className="h-12 px-8 gap-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-black uppercase tracking-widest shadow-xl shadow-primary/30 transition-all hover:scale-[1.02] active:scale-95" onClick={handleStartSession}>
+                <Play size={20} className="fill-current" /> Initialize Session
+              </Button>
+            </div>
           )}
           <div className="w-px h-10 bg-border mx-1" />
           <Button variant="outline" className="h-12 px-6 gap-2 border-border bg-background text-foreground hover:bg-muted rounded-xl transition-all shadow-md active:scale-95 group/dl" onClick={handleDownloadPDF}>
