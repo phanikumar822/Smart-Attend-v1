@@ -214,19 +214,19 @@ export default function AdminDashboard() {
             </>
           ) : (
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 border border-border bg-background/50 rounded-xl px-3 py-2 shadow-inner">
-                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">SCAN COOLDOWN:</span>
+              <div className="flex items-center gap-2 border border-white/10 bg-black/40 rounded-xl px-3.5 py-2 shadow-inner backdrop-blur-md">
+                <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">SCAN COOLDOWN:</span>
                 <select 
                   value={minGapHours} 
                   onChange={(e) => setMinGapHours(Number(e.target.value))}
-                  className="bg-transparent text-foreground rounded text-xs font-bold focus:outline-none cursor-pointer border-none p-0"
+                  className="bg-transparent text-white rounded text-xs font-bold focus:outline-none cursor-pointer border-none p-0 focus:ring-0 focus:outline-none [color-scheme:dark]"
                 >
-                  <option value={0.001}>None (Testing)</option>
-                  <option value={0.5}>30 Mins</option>
-                  <option value={1}>1 Hour</option>
-                  <option value={2}>2 Hours</option>
-                  <option value={4}>4 Hours</option>
-                  <option value={8}>8 Hours</option>
+                  <option value={0.001} className="bg-zinc-950 text-white py-2">None (Testing)</option>
+                  <option value={0.5} className="bg-zinc-950 text-white py-2">30 Mins</option>
+                  <option value={1} className="bg-zinc-950 text-white py-2">1 Hour</option>
+                  <option value={2} className="bg-zinc-950 text-white py-2">2 Hours</option>
+                  <option value={4} className="bg-zinc-950 text-white py-2">4 Hours</option>
+                  <option value={8} className="bg-zinc-950 text-white py-2">8 Hours</option>
                 </select>
               </div>
               <Button className="h-12 px-8 gap-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-black uppercase tracking-widest shadow-xl shadow-primary/30 transition-all hover:scale-[1.02] active:scale-95" onClick={handleStartSession}>
