@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import api from '@/lib/api';
 
 import { motion } from 'motion/react';
@@ -16,6 +17,37 @@ export default function Login({ setIsAuthenticated }: { setIsAuthenticated: (v: 
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+
+  // Recovery modal states
+  const [isRecovering, setIsRecovering] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [isRecoveryLoading, setIsRecoveryLoading] = useState(false);
+
+  const handleRecovery = async () => {
+    if (!recoveryEmail) {
+      toast.error('Please enter your email address');
+      return;
+    }
+    setIsRecoveryLoading(true);
+    try {
+      const res = await api.post('/auth/recover', { email: recoveryEmail });
+      toast.success(res.data.message || 'Recovery email dispatched successfully!');
+      
+      // Fallback display if SMTP is offline (helps in localhost tests!)
+      if (res.data.developerFallback) {
+        toast.info("SMTP Offline. Fallback Credentials: School ID: " + res.data.developerFallback.schoolId + " | Temp Code: " + res.data.developerFallback.tempCode, {
+          duration: 10000
+        });
+      }
+      
+      setIsRecovering(false);
+      setRecoveryEmail('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to dispatch recovery email');
+    } finally {
+      setIsRecoveryLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,7 +117,7 @@ export default function Login({ setIsAuthenticated }: { setIsAuthenticated: (v: 
               <div className="space-y-3">
                 <div className="flex justify-between items-center ml-1">
                   <Label htmlFor="password" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Access Code</Label>
-                  <button type="button" className="text-[10px] uppercase tracking-widest text-primary/80 hover:text-primary transition-colors font-bold">Credential Recovery</button>
+                  <button type="button" onClick={() => setIsRecovering(true)} className="text-[10px] uppercase tracking-widest text-primary/80 hover:text-primary transition-colors font-bold">Credential Recovery</button>
                 </div>
                 <Input 
                   id="password" 
@@ -137,6 +169,47 @@ export default function Login({ setIsAuthenticated }: { setIsAuthenticated: (v: 
           </div>
         </div>
       </motion.div>
+
+      {/* Recovery Modal */}
+      <Dialog open={isRecovering} onOpenChange={setIsRecovering}>
+        <DialogContent className="border-white/10 bg-zinc-950 text-white rounded-2xl p-8 max-w-md shadow-[0_0_80px_rgba(239,68,68,0.05)]">
+          <DialogHeader className="space-y-3 text-center">
+            <DialogTitle className="text-3xl font-black tracking-tight uppercase">Credential <span className="text-primary">Recovery</span></DialogTitle>
+            <DialogDescription className="text-zinc-400 text-xs">
+              Enter your registered administrator email address. We will verify your identity and dispatch your School ID, Section Name, and a new temporary Access Code.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="recovery-email" className="text-xs font-bold uppercase tracking-wider text-muted-foreground ml-1">Administrator Email</Label>
+              <Input 
+                id="recovery-email" 
+                type="email" 
+                placeholder="admin@institution.edu" 
+                value={recoveryEmail}
+                onChange={(e) => setRecoveryEmail(e.target.value)}
+                className="bg-black/60 border-white/10 text-base py-6 focus:border-primary focus:ring-primary/20 rounded-xl"
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Button 
+              variant="outline" 
+              className="w-full sm:w-1/2 border-white/10 text-white hover:bg-white/5 uppercase font-bold tracking-wider py-6 rounded-xl" 
+              onClick={() => setIsRecovering(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              className="w-full sm:w-1/2 bg-primary text-primary-foreground hover:bg-primary/90 uppercase font-bold tracking-wider py-6 rounded-xl shadow-lg shadow-primary/20" 
+              onClick={handleRecovery}
+              disabled={isRecoveryLoading}
+            >
+              {isRecoveryLoading ? 'Recovering...' : 'Send Recovery'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -275,6 +275,92 @@ async function startServer() {
     }
   });
 
+  // Credential Recovery API Route
+  app.post("/api/auth/recover", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ error: "Email address is required." });
+      }
+
+      // Find the administrator associated with this email
+      const admin = await Admin.findOne({ email: email.trim().toLowerCase() });
+      if (!admin) {
+        return res.status(404).json({ error: "No administrator account registered with this email address." });
+      }
+
+      // Generate a temporary 8-character alphanumeric access code
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let tempCode = 'TEMP-';
+      for (let i = 0; i < 6; i++) {
+        tempCode += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+
+      // Hash and save the temporary access code
+      const hashedPassword = await bcrypt.hash(tempCode, 10);
+      admin.password = hashedPassword;
+      await admin.save();
+
+      // Compose the credential recovery email
+      const emailBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <h1 style="color: #4f46e5; margin: 0;">SmartAttend.AI</h1>
+            <p style="color: #64748b; font-size: 12px; margin-top: 5px; text-transform: uppercase; letter-spacing: 0.1em;">Institutional Credential Recovery</p>
+          </div>
+          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-bottom: 20px;"/>
+          <p style="color: #334155; font-size: 16px;">Hello <strong>${admin.adminName}</strong>,</p>
+          <p style="color: #334155; font-size: 14px; line-height: 1.5;">You are receiving this email because a credential recovery request was initialized for your administrator account.</p>
+          
+          <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 0 0 10px 0; color: #475569; font-size: 13px;"><strong>YOUR CREDENTIALS:</strong></p>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 5px 0; color: #64748b; font-size: 14px; width: 140px;"><strong>School ID:</strong></td>
+                <td style="padding: 5px 0; color: #0f172a; font-size: 14px; font-family: monospace;"><strong>${admin.schoolId}</strong></td>
+              </tr>
+              <tr>
+                <td style="padding: 5px 0; color: #64748b; font-size: 14px;"><strong>Section Name:</strong></td>
+                <td style="padding: 5px 0; color: #0f172a; font-size: 14px;">${admin.section}</td>
+              </tr>
+              <tr>
+                <td style="padding: 5px 0; color: #64748b; font-size: 14px;"><strong>Temp Access Code:</strong></td>
+                <td style="padding: 5px 0; color: #e11d48; font-size: 14px; font-family: monospace;"><strong>${tempCode}</strong></td>
+              </tr>
+            </table>
+          </div>
+          
+          <p style="color: #ef4444; font-size: 12px; font-style: italic; line-height: 1.5; margin-top: 20px;">
+            * Important Note: For maximum security, please log in immediately using this temporary Access Code and update your password in your settings profile.
+          </p>
+          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 25px; margin-bottom: 15px;"/>
+          <p style="color: #94a3b8; font-size: 11px; text-align: center; margin: 0;">
+            SmartAttend.AI Security Engine. All rights reserved.
+          </p>
+        </div>
+      `;
+
+      // Dispatch recovery email
+      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        await sendEmail(
+          admin.email,
+          "Credential Recovery: " + admin.schoolName + " Admin Portal",
+          emailBody
+        );
+        res.json({ message: "Credential recovery instructions sent successfully to " + admin.email });
+      } else {
+        console.warn("[RECOVERY WARNING] SMTP is not configured. Returning plain text response for developer visibility.");
+        res.json({ 
+          message: "SMTP is offline. Verification fallback:", 
+          developerFallback: { schoolId: admin.schoolId, tempCode } 
+        });
+      }
+    } catch (err) {
+      console.error('Credential recovery error:', err);
+      res.status(500).json({ error: "Failed to dispatch recovery email. Please try again." });
+    }
+  });
+
   // ================= Founder API Routes =================
 
   // Founder Login
