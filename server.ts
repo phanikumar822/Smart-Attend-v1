@@ -722,6 +722,9 @@ async function startServer() {
           user: process.env.SMTP_USER,
           pass: process.env.SMTP_PASS,
         },
+        tls: {
+          rejectUnauthorized: false
+        }
       });
 
       let sentCount = 0;
