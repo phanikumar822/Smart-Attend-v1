@@ -27,6 +27,21 @@ declare global {
 
 dotenv.config();
 
+// Helper to sanitize environment variables that might contain surrounding quotes
+const cleanEnvVar = (val: string | undefined): string => {
+  if (!val) return "";
+  let cleaned = val.trim();
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  return cleaned.trim();
+};
+
+const SMTP_HOST = cleanEnvVar(process.env.SMTP_HOST) || "smtp.gmail.com";
+const SMTP_PORT = Number(cleanEnvVar(process.env.SMTP_PORT)) || 587;
+const SMTP_USER = cleanEnvVar(process.env.SMTP_USER);
+const SMTP_PASS = cleanEnvVar(process.env.SMTP_PASS);
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -341,7 +356,7 @@ async function startServer() {
       `;
 
       // Dispatch recovery email
-      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      if (SMTP_USER && SMTP_PASS) {
         await sendEmail(
           admin.email,
           "Credential Recovery: " + admin.schoolName + " Admin Portal",
@@ -715,12 +730,12 @@ async function startServer() {
 
       // Configure Nodemailer Transporter
       const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || "smtp.gmail.com",
-        port: parseInt(process.env.SMTP_PORT || "587"),
-        secure: false, // true for 465, false for other ports
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: SMTP_PORT === 465, // true for 465, false for other ports
         auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
+          user: SMTP_USER,
+          pass: SMTP_PASS,
         },
         tls: {
           rejectUnauthorized: false
@@ -736,7 +751,7 @@ async function startServer() {
         
         try {
           await transporter.sendMail({
-            from: `"SmartAttend AI" <${process.env.SMTP_USER}>`,
+            from: `"SmartAttend AI" <${SMTP_USER}>`,
             to: student.email,
             subject: "⚠️ Urgent: Attendance Absence Notification",
             html: `
@@ -953,15 +968,15 @@ async function startServer() {
 
   // Initialize nodemailer transporter once with pooling for bulk stability
   const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: Number(process.env.SMTP_PORT) === 465, // Use true for 465, false for other ports
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_PORT === 465, // Use true for 465, false for other ports
     pool: true,
     maxConnections: 3, // Reduced to be safer
     maxMessages: 100,
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user: SMTP_USER,
+      pass: SMTP_PASS,
     },
     tls: {
       rejectUnauthorized: false
@@ -977,20 +992,20 @@ async function startServer() {
     console.log(`[Email Dispatch] Attempting to send to: ${to} | Subject: ${subject}`);
     
     try {
-      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      if (SMTP_USER && SMTP_PASS) {
         const info = await transporter.sendMail({
-          from: `"SmartAttend AI" <${process.env.SMTP_USER}>`,
+          from: `"SmartAttend AI" <${SMTP_USER}>`,
           to,
           subject,
           html,
         });
         console.log(`[Email Dispatch] Success! Message ID: ${info.messageId} | Recipient: ${to}`);
       } else {
-        console.log(`[Email Dispatch] SMTP credentials not fully configured. User: ${process.env.SMTP_USER ? 'Set' : 'Missing'}, Pass: ${process.env.SMTP_PASS ? 'Set' : 'Missing'}`);
+        console.log(`[Email Dispatch] SMTP credentials not fully configured. User: ${SMTP_USER ? 'Set' : 'Missing'}, Pass: ${SMTP_PASS ? 'Set' : 'Missing'}`);
       }
     } catch (err: any) {
       if (err.message.includes('535') && err.message.includes('gmail')) {
-        console.error(`[CRITICAL EMAIL ERROR] Gmail Authentication Failed for ${process.env.SMTP_USER}. 
+        console.error(`[CRITICAL EMAIL ERROR] Gmail Authentication Failed for ${SMTP_USER}. 
         IMPORTANT: If you are using Gmail, you MUST use an 'App Password', not your regular login password.
         Generate one at: https://myaccount.google.com/apppasswords`);
       } else {
@@ -1324,7 +1339,7 @@ async function startServer() {
     console.log(`Server running on http://localhost:${PORT}`);
     
     // Verify transporter after server is up
-    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    if (SMTP_USER && SMTP_PASS) {
       transporter.verify((error) => {
         if (error) {
           console.error("[Email Dispatch] SMTP Verification Failed:", error.message);
