@@ -58,6 +58,80 @@ async function startServer() {
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
 
+  // Initialize nodemailer transporter once with pooling for bulk stability
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_PORT === 465, // Use true for 465, false for other ports
+    pool: true,
+    maxConnections: 3, // Reduced to be safer
+    maxMessages: 100,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+
+  const sendEmail = async (to: string, subject: string, html: string) => {
+    if (!to || !to.includes('@')) {
+      console.log(`[Email Dispatch] Skipping invalid email: ${to}`);
+      return;
+    }
+
+    console.log(`[Email Dispatch] Attempting to send to: ${to} | Subject: ${subject}`);
+    
+    // Check if HTTPS Relay URL is configured (to bypass Render's SMTP port blocking on Free plan)
+    const EMAIL_RELAY_URL = cleanEnvVar(process.env.EMAIL_RELAY_URL);
+    if (EMAIL_RELAY_URL) {
+      try {
+        console.log(`[Email Dispatch] Routing via HTTPS Relay: ${EMAIL_RELAY_URL}`);
+        const response = await axios.post(EMAIL_RELAY_URL, {
+          to,
+          subject,
+          html,
+          secret: cleanEnvVar(process.env.JWT_SECRET) || "supersecret"
+        }, {
+          timeout: 10000 // 10s timeout
+        });
+        
+        if (response.data && response.data.success) {
+          console.log(`[Email Dispatch] Success via HTTPS Relay! Recipient: ${to}`);
+          return;
+        } else {
+          console.error(`[Email Dispatch] HTTPS Relay failed or rejected request:`, response.data);
+        }
+      } catch (relayErr: any) {
+        console.error(`[Email Dispatch] HTTPS Relay connection failed:`, relayErr.message);
+      }
+      console.log(`[Email Dispatch] Falling back to standard SMTP due to relay failure...`);
+    }
+
+    try {
+      if (SMTP_USER && SMTP_PASS) {
+        const info = await transporter.sendMail({
+          from: `"SmartAttend AI" <${SMTP_USER}>`,
+          to,
+          subject,
+          html,
+        });
+        console.log(`[Email Dispatch] Success! Message ID: ${info.messageId} | Recipient: ${to}`);
+      } else {
+        console.log(`[Email Dispatch] SMTP credentials not fully configured. User: ${SMTP_USER ? 'Set' : 'Missing'}, Pass: ${SMTP_PASS ? 'Set' : 'Missing'}`);
+      }
+    } catch (err: any) {
+      if (err.message.includes('535') && err.message.includes('gmail')) {
+        console.error(`[CRITICAL EMAIL ERROR] Gmail Authentication Failed for ${SMTP_USER}. 
+        IMPORTANT: If you are using Gmail, you MUST use an 'App Password', not your regular login password.
+        Generate one at: https://myaccount.google.com/apppasswords`);
+      } else {
+        console.error(`[Email Dispatch] Failed for ${to}:`, err.message);
+      }
+    }
+  };
+
   try {
     // MongoDB Setup
     let mongoUri = process.env.MONGODB_URI;
@@ -728,57 +802,40 @@ async function startServer() {
         return res.json({ message: "No absentees to notify.", count: 0 });
       }
 
-      // Configure Nodemailer Transporter
-      const transporter = nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: SMTP_PORT,
-        secure: SMTP_PORT === 465, // true for 465, false for other ports
-        auth: {
-          user: SMTP_USER,
-          pass: SMTP_PASS,
-        },
-        tls: {
-          rejectUnauthorized: false
-        }
-      });
-
       let sentCount = 0;
       let failedCount = 0;
 
-      // Dispatch emails
+      // Dispatch emails using global sendEmail helper (supports HTTPS relay)
       for (const student of session.absentStudents as any[]) {
         if (!student.email) continue;
         
         try {
-          await transporter.sendMail({
-            from: `"SmartAttend AI" <${SMTP_USER}>`,
-            to: student.email,
-            subject: "⚠️ Urgent: Attendance Absence Notification",
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
-                <div style="background-color: #1e1b4b; padding: 20px; text-align: center;">
-                  <h2 style="color: #ffffff; margin: 0;">SmartAttend AI</h2>
-                  <p style="color: #94a3b8; margin: 5px 0 0 0;">Institutional Integrity System</p>
-                </div>
-                <div style="padding: 30px; background-color: #ffffff;">
-                  <p style="font-size: 16px; color: #333333;">Dear <strong>${student.name}</strong> (Roll No: ${student.rollNo}),</p>
-                  <p style="font-size: 16px; color: #333333; line-height: 1.5;">
-                    This is an automated notification from the SmartAttend AI Biometric Core. 
-                    Our system records indicate that you have been marked <strong>ABSENT</strong> for today's session (${today}).
-                  </p>
-                  <div style="background-color: #fee2e2; border-left: 4px solid #ef4444; padding: 15px; margin: 25px 0;">
-                    <p style="color: #991b1b; margin: 0; font-weight: bold;">Current Attendance: ${student.attendancePercentage?.toFixed(1)}%</p>
-                  </div>
-                  <p style="font-size: 14px; color: #666666; line-height: 1.5;">
-                    Consistent attendance is critical to maintaining your institutional integrity profile. If you believe this is an error, please contact your administrator immediately.
-                  </p>
-                </div>
-                <div style="background-color: #f8fafc; padding: 15px; text-align: center; border-top: 1px solid #e0e0e0;">
-                  <p style="font-size: 12px; color: #94a3b8; margin: 0;">This is an automated message generated by the SmartAttend Neural Engine. Please do not reply to this email.</p>
-                </div>
+          const emailBody = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+              <div style="background-color: #1e1b4b; padding: 20px; text-align: center;">
+                <h2 style="color: #ffffff; margin: 0;">SmartAttend AI</h2>
+                <p style="color: #94a3b8; margin: 5px 0 0 0;">Institutional Integrity System</p>
               </div>
-            `,
-          });
+              <div style="padding: 30px; background-color: #ffffff;">
+                <p style="font-size: 16px; color: #333333;">Dear <strong>${student.name}</strong> (Roll No: ${student.rollNo}),</p>
+                <p style="font-size: 16px; color: #333333; line-height: 1.5;">
+                  This is an automated notification from the SmartAttend AI Biometric Core. 
+                  Our system records indicate that you have been marked <strong>ABSENT</strong> for today's session (${today}).
+                </p>
+                <div style="background-color: #fee2e2; border-left: 4px solid #ef4444; padding: 15px; margin: 25px 0;">
+                  <p style="color: #991b1b; margin: 0; font-weight: bold;">Current Attendance: ${student.attendancePercentage?.toFixed(1)}%</p>
+                </div>
+                <p style="font-size: 14px; color: #666666; line-height: 1.5;">
+                  Consistent attendance is critical to maintaining your institutional integrity profile. If you believe this is an error, please contact your administrator immediately.
+                </p>
+              </div>
+              <div style="background-color: #f8fafc; padding: 15px; text-align: center; border-top: 1px solid #e0e0e0;">
+                <p style="font-size: 12px; color: #94a3b8; margin: 0;">This is an automated message generated by the SmartAttend Neural Engine. Please do not reply to this email.</p>
+              </div>
+            </div>
+          `;
+
+          await sendEmail(student.email, "⚠️ Urgent: Attendance Absence Notification", emailBody);
           sentCount++;
         } catch (mailErr) {
           console.error(`Failed to send email to ${student.email}:`, mailErr);
@@ -966,53 +1023,7 @@ async function startServer() {
     // Real implementation would use axios.post('https://www.fast2sms.com/dev/bulkV2', ...)
   };
 
-  // Initialize nodemailer transporter once with pooling for bulk stability
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465, // Use true for 465, false for other ports
-    pool: true,
-    maxConnections: 3, // Reduced to be safer
-    maxMessages: 100,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS,
-    },
-    tls: {
-      rejectUnauthorized: false
-    }
-  });
 
-  const sendEmail = async (to: string, subject: string, html: string) => {
-    if (!to || !to.includes('@')) {
-      console.log(`[Email Dispatch] Skipping invalid email: ${to}`);
-      return;
-    }
-
-    console.log(`[Email Dispatch] Attempting to send to: ${to} | Subject: ${subject}`);
-    
-    try {
-      if (SMTP_USER && SMTP_PASS) {
-        const info = await transporter.sendMail({
-          from: `"SmartAttend AI" <${SMTP_USER}>`,
-          to,
-          subject,
-          html,
-        });
-        console.log(`[Email Dispatch] Success! Message ID: ${info.messageId} | Recipient: ${to}`);
-      } else {
-        console.log(`[Email Dispatch] SMTP credentials not fully configured. User: ${SMTP_USER ? 'Set' : 'Missing'}, Pass: ${SMTP_PASS ? 'Set' : 'Missing'}`);
-      }
-    } catch (err: any) {
-      if (err.message.includes('535') && err.message.includes('gmail')) {
-        console.error(`[CRITICAL EMAIL ERROR] Gmail Authentication Failed for ${SMTP_USER}. 
-        IMPORTANT: If you are using Gmail, you MUST use an 'App Password', not your regular login password.
-        Generate one at: https://myaccount.google.com/apppasswords`);
-      } else {
-        console.error(`[Email Dispatch] Failed for ${to}:`, err.message);
-      }
-    }
-  };
 
   app.post("/api/notifications/bulk-email", authenticate, async (req, res) => {
     try {
