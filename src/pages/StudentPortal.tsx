@@ -1,40 +1,47 @@
-import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import * as faceapi from 'face-api.js';
 import { useFaceApi } from '@/hooks/useFaceApi';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Camera, CheckCircle2, AlertCircle, Loader2, Zap } from 'lucide-react';
+import { Camera, CheckCircle2, AlertCircle, Loader2, Zap, Clock, XCircle } from 'lucide-react';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function StudentPortal() {
   const { isLoaded, error } = useFaceApi();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [rollNo, setRollNo] = useState('');
   const [isScanning, setIsScanning] = useState(false);
-  const [isMarking, setIsMarking] = useState(false);
+  const [students, setStudents] = useState<any[]>([]);
   const [session, setSession] = useState<any>(null);
-  const [status, setStatus] = useState<'idle' | 'detecting' | 'blink_required' | 'matched' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'awaiting_face' | 'blink_required' | 'matching' | 'matched' | 'error'>('idle');
   const [hasBlinked, setHasBlinked] = useState(false);
+  const [matchedStudent, setMatchedStudent] = useState<any>(null);
+  const [isLoadedStudents, setIsLoadedStudents] = useState(false);
 
   useEffect(() => {
-    const fetchSession = async () => {
+    const fetchInitialData = async () => {
       try {
-        const res = await api.get('/attendance/session');
-        setSession(res.data);
+        const sessionRes = await api.get('/attendance/session');
+        setSession(sessionRes.data);
+        
+        const studentsRes = await api.get('/students');
+        setStudents(studentsRes.data);
+        setIsLoadedStudents(true);
       } catch (err) {
-        console.error('Failed to fetch session');
+        console.error('Failed to fetch initial data:', err);
       }
     };
-    fetchSession();
+    fetchInitialData();
   }, []);
 
   const startVideo = async () => {
+    if (!isLoadedStudents) {
+      toast.error('Identity database is still initializing, please wait.');
+      return;
+    }
     setIsScanning(true);
-    setStatus('detecting');
+    setStatus('awaiting_face');
   };
 
   useEffect(() => {
@@ -70,102 +77,174 @@ export default function StudentPortal() {
     stream?.getTracks().forEach(track => track.stop());
     setIsScanning(false);
     setStatus('idle');
+    setMatchedStudent(null);
   };
 
-  const handleAttendance = async () => {
-    if (!rollNo) return toast.error('Please enter Roll Number');
-    if (!videoRef.current) return;
+  // Automated biometric scan pipeline loop
+  useEffect(() => {
+    if (!isScanning || !videoRef.current) return;
+    let active = true;
+    let processing = false;
 
-    setIsMarking(true);
-    setHasBlinked(false);
-    setStatus('blink_required');
-    
-    try {
-      // Liveness check loop
-      let blinkDetected = false;
-      const startTime = Date.now();
-      
-      const calculateEAR = (eye: faceapi.Point[]) => {
-        const v1 = Math.sqrt(Math.pow(eye[1].x - eye[5].x, 2) + Math.pow(eye[1].y - eye[5].y, 2));
-        const v2 = Math.sqrt(Math.pow(eye[2].x - eye[4].x, 2) + Math.pow(eye[2].y - eye[4].y, 2));
-        const h = Math.sqrt(Math.pow(eye[0].x - eye[3].x, 2) + Math.pow(eye[0].y - eye[3].y, 2));
-        return (v1 + v2) / (2 * h);
-      };
+    const EAR_THRESHOLD = 0.26;
+    const calculateEAR = (eye: faceapi.Point[]) => {
+      const v1 = Math.sqrt(Math.pow(eye[1].x - eye[5].x, 2) + Math.pow(eye[1].y - eye[5].y, 2));
+      const v2 = Math.sqrt(Math.pow(eye[2].x - eye[4].x, 2) + Math.pow(eye[2].y - eye[4].y, 2));
+      const h = Math.sqrt(Math.pow(eye[0].x - eye[3].x, 2) + Math.pow(eye[0].y - eye[3].y, 2));
+      return (v1 + v2) / (2 * h);
+    };
 
-      while (Date.now() - startTime < 10000) { // 10 second timeout
-        const detection = await faceapi
-          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
-          .withFaceLandmarks();
+    const processFrame = async () => {
+      if (!active || processing || !videoRef.current) return;
+      processing = true;
 
-        if (detection) {
-          const landmarks = detection.landmarks;
-          const leftEAR = calculateEAR(landmarks.getLeftEye());
-          const rightEAR = calculateEAR(landmarks.getRightEye());
-          const avgEAR = (leftEAR + rightEAR) / 2;
-          
-          // EAR below 0.26 is more lenient for various lighting/cameras
-          if (avgEAR < 0.26) {
-            blinkDetected = true;
-            setHasBlinked(true);
-            break;
+      try {
+        if (status === 'awaiting_face') {
+          const detection = await faceapi
+            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks();
+
+          if (detection && active) {
+            setStatus('blink_required');
+            setHasBlinked(false);
+          }
+        } 
+        
+        else if (status === 'blink_required') {
+          const detection = await faceapi
+            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks();
+
+          if (!detection && active) {
+            // Face lost, revert back to awaiting face
+            setStatus('awaiting_face');
+          } else if (detection && active) {
+            const landmarks = detection.landmarks;
+            const leftEAR = calculateEAR(landmarks.getLeftEye());
+            const rightEAR = calculateEAR(landmarks.getRightEye());
+            const avgEAR = (leftEAR + rightEAR) / 2;
+
+            if (avgEAR < EAR_THRESHOLD) {
+              setHasBlinked(true);
+              setStatus('matching');
+            }
+          }
+        } 
+        
+        else if (status === 'matching') {
+          const detection = await faceapi
+            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+          if (!detection && active) {
+            toast.error('Face lost during identity check.');
+            setStatus('awaiting_face');
+          } else if (detection && active) {
+            const validStudents = students.filter((s: any) => s.faceDescriptor && s.faceDescriptor.length > 0);
+            if (validStudents.length === 0) {
+              toast.error('No registered face profiles found.');
+              setStatus('error');
+              active = false;
+              return;
+            }
+
+            const LabeledDescriptors = validStudents.map((s: any) => 
+              new faceapi.LabeledFaceDescriptors(s.rollNo, [new Float32Array(s.faceDescriptor)])
+            );
+
+            const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.6);
+            const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+
+            if (bestMatch.label === 'unknown') {
+              toast.error('Identity verification failed. Unknown face.');
+              setStatus('error');
+              setTimeout(() => {
+                if (active) {
+                  setStatus('awaiting_face');
+                  setHasBlinked(false);
+                }
+              }, 2500);
+            } else {
+              const matchedRollNo = bestMatch.label;
+              const matchedStudentInfo = students.find((s: any) => s.rollNo === matchedRollNo);
+
+              if (!matchedStudentInfo) {
+                toast.error('Internal matching error.');
+                setStatus('error');
+                setTimeout(() => {
+                  if (active) {
+                    setStatus('awaiting_face');
+                    setHasBlinked(false);
+                  }
+                }, 2500);
+              } else {
+                setMatchedStudent(matchedStudentInfo);
+                setStatus('matched');
+
+                try {
+                  const res = await api.post('/attendance/mark', { rollNo: matchedRollNo });
+                  toast.success(`Attendance marked successfully for ${matchedStudentInfo.name}!`);
+                  
+                  // Refresh session details to show new scans in history
+                  const sessionRes = await api.get('/attendance/session');
+                  setSession(sessionRes.data);
+                } catch (err: any) {
+                  toast.error(err.response?.data?.error || 'Failed to record attendance');
+                }
+
+                // Wait and reset automatically
+                setTimeout(() => {
+                  if (active) {
+                    setMatchedStudent(null);
+                    setHasBlinked(false);
+                    setStatus('awaiting_face');
+                  }
+                }, 3500);
+              }
+            }
           }
         }
-        await new Promise(r => setTimeout(r, 30)); // Even faster sampling
+      } catch (err) {
+        console.error('Auto scan error:', err);
       }
 
-      if (!blinkDetected) {
-        toast.error('Liveness check failed. Please blink your eyes.');
-        setStatus('detecting');
-        setIsMarking(false);
-        return;
+      processing = false;
+      // Schedule next loop if still scanning and not on holds
+      if (active && (status === 'awaiting_face' || status === 'blink_required')) {
+        requestAnimationFrame(processFrame);
       }
+    };
 
-      // 1. Detect face and get descriptor
-      const detection = await faceapi
-        .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-
-      if (!detection) {
-        toast.error('No face detected. Please try again.');
-        return;
-      }
-
-      // 2. Fetch student embeddings from DB
-      const studentsRes = await api.get('/students');
-      const students = studentsRes.data;
-      const student = students.find((s: any) => s.rollNo === rollNo);
-
-      if (!student) {
-        toast.error('Student not found');
-        return;
-      }
-
-      // 3. Compare descriptors
-      const faceMatcher = new faceapi.FaceMatcher([
-        new faceapi.LabeledFaceDescriptors(student.rollNo, [new Float32Array(student.faceDescriptor)])
-      ], 0.6);
-
-      const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-
-      if (bestMatch.label === 'unknown') {
-        toast.error('Face does not match roll number');
-        setStatus('error');
-      } else {
-        // 4. Mark attendance
-        await api.post('/attendance/mark', { rollNo });
-        toast.success('Attendance marked successfully!');
-        setStatus('matched');
-        stopVideo();
-      }
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to mark attendance');
-    } finally {
-      setIsMarking(false);
+    if (status === 'awaiting_face' || status === 'blink_required') {
+      requestAnimationFrame(processFrame);
+    } else if (status === 'matching') {
+      processFrame();
     }
-  };
+
+    return () => {
+      active = false;
+    };
+  }, [isScanning, status, students]);
 
   if (error) return <div className="text-center py-20 text-destructive">{error}</div>;
+
+  // Resolve scan history using client-side student names and roll numbers
+  const scanHistory = session?.scans?.map((scan: any) => {
+    const student = students.find((s: any) => s._id.toString() === scan.studentId.toString());
+    return {
+      ...scan,
+      studentName: student?.name || 'Unknown Student',
+      rollNo: student?.rollNo || 'N/A'
+    };
+  }).sort((a: any, b: any) => new Date(b.outTime || b.inTime).getTime() - new Date(a.outTime || a.inTime).getTime());
+
+  const steps = [
+    { label: 'Detection', active: status !== 'idle' },
+    { label: 'Liveness', active: status === 'blink_required' || status === 'matching' || status === 'matched' },
+    { label: 'Matching', active: status === 'matching' || status === 'matched' },
+    { label: 'Success', active: status === 'matched' }
+  ];
 
   return (
     <div className="max-w-6xl mx-auto space-y-12">
@@ -200,43 +279,31 @@ export default function StudentPortal() {
           </Card>
         </motion.div>
       ) : (
-        <div className="grid lg:grid-cols-12 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left Column: Biometric Video Feed */}
           <motion.div 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
             className="lg:col-span-7"
           >
-            <Card className="formal-card overflow-hidden border-white/5 bg-black/40">
-              <CardHeader className="border-b border-white/5 bg-white/[0.02]">
-                <div className="flex justify-between items-center">
-                    <div>
-                      <CardTitle className="text-primary font-heading text-2xl font-bold">Vision Engine</CardTitle>
-                      <CardDescription className="text-foreground font-mono text-xs uppercase tracking-widest font-black">Neural processing online</CardDescription>
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_12px_theme(colors.primary)]" />
-                      <div className="text-xs font-black font-mono text-primary uppercase tracking-wider">Active Scan</div>
-                    </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0 relative aspect-video bg-black/60 flex items-center justify-center group">
+            <Card className="formal-card border-white/5 bg-white/[0.02] overflow-hidden relative aspect-video flex flex-col justify-center items-center">
+              <CardContent className="p-0 w-full h-full relative flex items-center justify-center">
                 {!isScanning ? (
-                  <div className="flex flex-col items-center gap-6">
-                    <div className="w-20 h-20 rounded-full border-2 border-dashed border-white/10 flex items-center justify-center animate-[spin_10s_linear_infinite]">
+                  <div className="flex flex-col items-center gap-6 p-8">
+                    <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
                       <Camera className="w-8 h-8 text-white/20" />
                     </div>
                     <Button 
                       onClick={startVideo} 
                       className="gap-3 bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-8 py-6 text-md font-bold transition-all hover:scale-105 active:scale-95 shadow-xl shadow-primary/20"
-                      disabled={!isLoaded}
+                      disabled={!isLoaded || !isLoadedStudents}
                     >
-                      {!isLoaded ? (
+                      {!isLoaded || !isLoadedStudents ? (
                         <Loader2 size={20} className="animate-spin" />
                       ) : (
                         <Camera size={20} />
                       )}
-                      {!isLoaded ? 'Awakening AI...' : 'Initialize Camera'}
+                      {!isLoaded || !isLoadedStudents ? 'Awakening AI...' : 'Initialize Camera'}
                     </Button>
                   </div>
                 ) : (
@@ -266,25 +333,54 @@ export default function StudentPortal() {
                       </div>
                     </div>
 
-                    {status === 'blink_required' && (
+                    <div className="absolute top-8 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+                      {status === 'awaiting_face' && (
                         <motion.div 
-                          initial={{ opacity: 0, y: 20 }}
+                          initial={{ opacity: 0, y: -20 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="absolute top-8 left-1/2 -translate-x-1/2 z-30"
+                          className="bg-[#00f2ff]/20 border border-[#00f2ff] text-[#00f2ff] px-8 py-3 rounded-full text-xs font-black tracking-[0.2em] uppercase animate-pulse backdrop-blur-xl shadow-[0_0_20px_rgba(0,242,255,0.3)]"
                         >
-                        <div className="bg-primary/20 border border-primary text-primary px-10 py-4 rounded-full text-sm font-black tracking-[0.3em] uppercase animate-pulse backdrop-blur-xl shadow-[0_0_30px_rgba(99,102,241,0.5)]">
-                          Action Required: Blink Eyes
-                        </div>
+                          Awaiting Subject
                         </motion.div>
-                    )}
+                      )}
+                      {status === 'blink_required' && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="bg-amber-500/20 border border-amber-500 text-amber-500 px-8 py-3 rounded-full text-xs font-black tracking-[0.2em] uppercase animate-pulse backdrop-blur-xl shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+                        >
+                          Action Required: Blink Eyes
+                        </motion.div>
+                      )}
+                      {status === 'matching' && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="bg-purple-500/20 border border-purple-500 text-purple-500 px-8 py-3 rounded-full text-xs font-black tracking-[0.2em] uppercase animate-pulse backdrop-blur-xl shadow-[0_0_20px_rgba(168,85,247,0.3)]"
+                        >
+                          Matching Identity
+                        </motion.div>
+                      )}
+                    </div>
+
+                    {/* Exit Camera Button */}
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={stopVideo} 
+                      className="absolute top-6 right-6 border-white/10 text-muted-foreground hover:text-white bg-black/40 hover:bg-black/60 rounded-xl"
+                    >
+                      Close Camera
+                    </Button>
                   </>
                 )}
                 
                 <AnimatePresence>
-                  {status === 'matched' && (
+                  {status === 'matched' && matchedStudent && (
                     <motion.div 
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
                       className="absolute inset-0 bg-[#10b981]/90 flex flex-col items-center justify-center text-white z-40 backdrop-blur-md"
                     >
                       <motion.div
@@ -294,8 +390,28 @@ export default function StudentPortal() {
                       >
                         <CheckCircle2 size={100} className="mb-6" />
                       </motion.div>
-                      <h3 className="text-5xl font-bold tracking-tighter font-heading mb-2">Authenticated</h3>
-                      <p className="text-lg opacity-80 uppercase tracking-widest font-mono">Confidence: 99.98%</p>
+                      <h3 className="text-4xl font-black tracking-tighter uppercase font-heading mb-1">{matchedStudent.name}</h3>
+                      <p className="text-sm opacity-80 uppercase tracking-widest font-mono mb-4">{matchedStudent.rollNo}</p>
+                      <span className="text-xs font-black tracking-[0.3em] uppercase bg-white/20 border border-white/30 px-6 py-2 rounded-full">Attendance Recorded</span>
+                    </motion.div>
+                  )}
+
+                  {status === 'error' && (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 bg-red-500/90 flex flex-col items-center justify-center text-white z-40 backdrop-blur-md"
+                    >
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: "spring", damping: 10 }}
+                      >
+                        <XCircle size={100} className="mb-6 animate-bounce" />
+                      </motion.div>
+                      <h3 className="text-4xl font-black tracking-tighter uppercase font-heading mb-1">Access Denied</h3>
+                      <p className="text-sm opacity-80 uppercase tracking-widest font-mono">Unknown Biometric Profile</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -303,61 +419,104 @@ export default function StudentPortal() {
             </Card>
           </motion.div>
 
+          {/* Right Column: Console Details & Scan History */}
           <motion.div 
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.3 }}
-            className="lg:col-span-5 space-y-6"
+            className="lg:col-span-5 flex flex-col gap-6 h-full"
           >
+            {/* Steps & Verification State */}
             <Card className="formal-card border-white/5 bg-white/[0.02]">
               <CardHeader className="border-b border-white/10 pb-6">
-                <CardTitle className="text-2xl font-heading text-foreground">Identity Portal</CardTitle>
-                <CardDescription className="text-muted-foreground text-sm font-medium">Enter your credentials to initiate biometric synchronization.</CardDescription>
+                <CardTitle className="text-2xl font-heading text-foreground">Verification Console</CardTitle>
+                <CardDescription className="text-muted-foreground text-sm font-medium">Automatic facial identity recognition and liveness analysis.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-8 pt-6">
-                <div className="space-y-4">
-                  <label className="text-xs font-black uppercase tracking-widest text-foreground ml-1">Credential Index (Roll No)</label>
-                  <div className="relative group">
-                    <Input 
-                      placeholder="e.g. 2021CS001" 
-                      value={rollNo}
-                      onChange={(e) => setRollNo(e.target.value)}
-                      className="text-xl py-8 bg-black/60 border-white/20 text-white focus:border-primary focus:ring-primary/40 rounded-2xl pl-6 font-bold"
-                    />
-                    <div className="absolute inset-y-0 right-6 flex items-center text-primary font-black font-mono text-xs uppercase tracking-widest opacity-80">Awaiting Input</div>
-                  </div>
+              <CardContent className="space-y-6 pt-6">
+                {/* Live Status Header */}
+                <div className="bg-black/60 border border-white/10 p-6 rounded-2xl flex flex-col items-center justify-center text-center gap-2">
+                  <span className="text-[10px] text-muted-foreground uppercase font-mono tracking-widest">Active State</span>
+                  {status === 'idle' && (
+                    <span className="text-xl font-black uppercase text-muted-foreground">Console Offline</span>
+                  )}
+                  {status === 'awaiting_face' && (
+                    <span className="text-xl font-black uppercase text-[#00f2ff] animate-pulse">Awaiting Subject</span>
+                  )}
+                  {status === 'blink_required' && (
+                    <span className="text-xl font-black uppercase text-amber-500 animate-pulse font-heading">Liveness Check</span>
+                  )}
+                  {status === 'matching' && (
+                    <span className="text-xl font-black uppercase text-purple-500 animate-pulse font-heading">Matching Identity</span>
+                  )}
+                  {status === 'matched' && (
+                    <span className="text-xl font-black uppercase text-[#00ff88]">Authenticated</span>
+                  )}
+                  {status === 'error' && (
+                    <span className="text-xl font-black uppercase text-red-500">Access Denied</span>
+                  )}
                 </div>
 
-                <div className="space-y-4">
-                  <Button 
-                    className="w-full py-8 text-lg font-bold uppercase tracking-[0.2em] bg-primary text-primary-foreground hover:bg-primary/90 shadow-2xl shadow-primary/20 disabled:opacity-30 rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]" 
-                    disabled={!isScanning || isMarking || !rollNo || !isLoaded}
-                    onClick={handleAttendance}
-                  >
-                    {isMarking ? (
-                      <div className="flex items-center gap-4">
-                        <Loader2 className="animate-spin w-5 h-5" /> 
-                        <span>{status === 'blink_required' ? 'Awaiting Blink' : 'Computing Face Data'}</span>
+                {/* Verification Progress Steps */}
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {steps.map((s, idx) => (
+                    <div key={idx} className="flex flex-col items-center gap-2">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center border font-mono text-xs font-bold transition-all duration-300 ${
+                        s.active 
+                          ? 'bg-primary/20 border-primary text-primary shadow-[0_0_15px_rgba(99,102,241,0.4)]' 
+                          : 'bg-black/40 border-white/10 text-muted-foreground'
+                      }`}>
+                        {idx + 1}
                       </div>
-                    ) : (
-                      'Perform Biometric Sync'
-                    )}
-                  </Button>
-                  <p className="text-[10px] text-center text-muted-foreground/50 font-mono uppercase tracking-[0.3em]">Advanced Cryptographic Verification</p>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider ${
+                        s.active ? 'text-primary' : 'text-muted-foreground'
+                      }`}>{s.label}</span>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="glass border-white/5 p-6 bg-gradient-to-br from-primary/5 to-transparent rounded-2xl">
-              <div className="flex gap-4 items-start">
-                <div className="p-3 bg-primary/10 rounded-xl">
-                  <Zap className="text-primary w-5 h-5" />
+            {/* Scan History */}
+            <Card className="formal-card border-white/5 bg-white/[0.02] flex-1 flex flex-col">
+              <CardHeader className="border-b border-white/10 pb-4">
+                <CardTitle className="text-lg font-heading text-foreground flex items-center gap-2">
+                  <Clock size={18} className="text-primary" /> Recent Scans
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-4 px-0 flex-1 overflow-hidden">
+                <div className="max-h-[300px] overflow-y-auto px-6 space-y-3 scrollbar-thin">
+                  {scanHistory && scanHistory.length > 0 ? (
+                    scanHistory.slice(0, 4).map((scan: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between bg-black/40 border border-white/5 p-4 rounded-xl">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-white">{scan.studentName}</p>
+                          <p className="text-[10px] text-muted-foreground font-mono">{scan.rollNo}</p>
+                        </div>
+                        <div className="text-right space-y-1">
+                          <span className={`text-[9px] uppercase font-black tracking-widest px-2 py-0.5 rounded-full ${
+                            scan.outTime 
+                              ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20 font-heading' 
+                              : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-heading'
+                          }`}>
+                            {scan.outTime ? 'Checked Out' : 'Checked In'}
+                          </span>
+                          <p className="text-[9px] text-muted-foreground font-mono">
+                            {new Date(scan.outTime || scan.inTime).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: true
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-12 text-xs text-muted-foreground uppercase tracking-widest font-mono">
+                      No scans recorded yet
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-bold uppercase tracking-wider text-foreground">Security Protocol</h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">System requires active liveness verification. Ensure your face is centered and clearly lit for optimal throughput.</p>
-                </div>
-              </div>
+              </CardContent>
             </Card>
           </motion.div>
         </div>

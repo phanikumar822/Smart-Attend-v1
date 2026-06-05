@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import * as faceapi from 'face-api.js';
 import { useFaceApi } from '@/hooks/useFaceApi';
 import { Button } from '@/components/ui/button';
@@ -52,33 +52,47 @@ export default function AddStudentDialog({ onStudentAdded }: { onStudentAdded: (
     };
   }, [isCapturing]);
 
-  const captureFace = async () => {
-    if (!videoRef.current) return;
-    
-    try {
-      const detection = await faceapi
-        .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+  // Automatic face capture loop
+  useEffect(() => {
+    let active = true;
+    let detectionInterval: any = null;
 
-      if (!detection) {
-        toast.error('No face detected. Please try again.');
-        return;
-      }
+    const detectAndCapture = async () => {
+      if (!isCapturing || !videoRef.current || !active) return;
+      try {
+        const detection = await faceapi
+          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceDescriptor();
 
-      setFaceDescriptor(Array.from(detection.descriptor));
-      toast.success('Face captured successfully!');
-      
-      // Stop camera
-      const stream = videoRef.current.srcObject as MediaStream;
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+        if (detection && active) {
+          setFaceDescriptor(Array.from(detection.descriptor));
+          toast.success('Face detected and registered automatically!');
+          
+          // Stop camera
+          if (videoRef.current && videoRef.current.srcObject) {
+            const stream = videoRef.current.srcObject as MediaStream;
+            stream.getTracks().forEach(track => track.stop());
+          }
+          setIsCapturing(false);
+          active = false;
+        }
+      } catch (err) {
+        console.error('Auto face detection error:', err);
       }
-      setIsCapturing(false);
-    } catch (err) {
-      toast.error('Error capturing face');
+    };
+
+    if (isCapturing) {
+      detectionInterval = setInterval(detectAndCapture, 400);
     }
-  };
+
+    return () => {
+      active = false;
+      if (detectionInterval) {
+        clearInterval(detectionInterval);
+      }
+    };
+  }, [isCapturing]);
 
   const handleSave = async () => {
     if (!name || !rollNo || !phone || !email || !faceDescriptor) {
@@ -165,13 +179,11 @@ export default function AddStudentDialog({ onStudentAdded }: { onStudentAdded: (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="w-32 h-40 border border-[#00f2ff]/50 rounded-[50%_50%_40%_40%] shadow-[0_0_15px_rgba(0,242,255,0.2)]" />
                   </div>
-                  <Button 
-                    size="sm" 
-                    className="absolute bottom-2 right-2 bg-[#00f2ff] text-[#05070a] hover:bg-[#00f2ff]/90" 
-                    onClick={captureFace}
-                  >
-                    Capture
-                  </Button>
+                  <div className="absolute inset-x-0 bottom-4 flex justify-center pointer-events-none">
+                    <div className="bg-[#00f2ff]/20 border border-[#00f2ff] text-[#00f2ff] text-xs font-black tracking-widest uppercase px-4 py-2 rounded-full animate-pulse shadow-lg backdrop-blur-md">
+                      Scanning... Keep Still
+                    </div>
+                  </div>
                 </>
               ) : faceDescriptor ? (
                 <div className="flex flex-col items-center gap-2 text-[#00ff88]">
