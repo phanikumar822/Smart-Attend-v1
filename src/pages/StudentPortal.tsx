@@ -179,7 +179,7 @@ export default function StudentPortal() {
       try {
         if (status === 'awaiting_face') {
           const detection = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
             .withFaceLandmarks();
 
           if (detection && active) {
@@ -194,7 +194,7 @@ export default function StudentPortal() {
         
         else if (status === 'blink_required') {
           const detection = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
             .withFaceLandmarks();
 
           if (!detection && active) {
@@ -214,7 +214,7 @@ export default function StudentPortal() {
         
         else if (status === 'matching') {
           const detection = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
             .withFaceLandmarks()
             .withFaceDescriptor();
 
@@ -306,7 +306,7 @@ export default function StudentPortal() {
 
       try {
         const detections = await faceapi
-          .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+          .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
           .withFaceLandmarks()
           .withFaceDescriptors();
 
