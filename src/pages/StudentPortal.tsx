@@ -234,7 +234,7 @@ export default function StudentPortal() {
               new faceapi.LabeledFaceDescriptors(s.rollNo, [new Float32Array(s.faceDescriptor)])
             );
 
-            const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.6);
+            const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.7);
             const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
 
             if (bestMatch.label === 'unknown') {
@@ -334,7 +334,7 @@ export default function StudentPortal() {
               const LabeledDescriptors = validStudents.map((s: any) => 
                 new faceapi.LabeledFaceDescriptors(s.rollNo, [new Float32Array(s.faceDescriptor)])
               );
-              const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.6);
+              const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.7);
 
               for (const det of resizedDetections) {
                 const box = det.detection.box;

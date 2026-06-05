@@ -1056,12 +1056,12 @@ async function startServer() {
       if (session) {
         session.sessionStatus = 'ended';
 
-        // Strict two-scan cleanup: Any student marked present must have a complete check-out scan
+        // Cleanup: Any student with a valid scan (Check-In) is counted present
         if (session.scans && session.scans.length > 0) {
           const newPresentStudents = [];
           
           session.scans.forEach((scan) => {
-            if (scan.inTime && scan.outTime) {
+            if (scan.inTime) {
               newPresentStudents.push(scan.studentId);
             }
           });
@@ -1194,12 +1194,11 @@ async function startServer() {
 
         session.scans.push(newScan);
 
-        if (isSingleScanMode) {
-          if (!session.presentStudents.some(id => id.toString() === student._id.toString())) {
-            session.presentStudents.push(student._id);
-          }
-          session.absentStudents = session.absentStudents.filter(id => id.toString() !== student._id.toString());
+        // Always add to presentStudents immediately on Check-In so they show as present in real-time
+        if (!session.presentStudents.some(id => id.toString() === student._id.toString())) {
+          session.presentStudents.push(student._id);
         }
+        session.absentStudents = session.absentStudents.filter(id => id.toString() !== student._id.toString());
 
         await session.save();
 
