@@ -1179,14 +1179,41 @@ async function startServer() {
 
       if (!scanRecord) {
         // First scan (Check-In)
-        session.scans.push({
+        const isSingleScanMode = session.minGapHours <= 0.01;
+        
+        const newScan = {
           studentId: student._id,
           inTime: now,
-          allScans: [now]
-        });
+          allScans: [now],
+          outTime: undefined
+        };
+        
+        if (isSingleScanMode) {
+          newScan.outTime = now;
+        }
+
+        session.scans.push(newScan);
+
+        if (isSingleScanMode) {
+          if (!session.presentStudents.some(id => id.toString() === student._id.toString())) {
+            session.presentStudents.push(student._id);
+          }
+          session.absentStudents = session.absentStudents.filter(id => id.toString() !== student._id.toString());
+        }
+
+        await session.save();
+
+        if (isSingleScanMode) {
+          return res.json({ 
+            message: "Attendance marked successfully for " + student.name + " at " + now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) + "! Marked PRESENT.", 
+            type: "out", 
+            student, 
+            inTime: now,
+            outTime: now
+          });
+        }
 
         // Strict Two-Scan rule: Do not mark as present yet. Keep them in absentStudents.
-        await session.save();
         return res.json({ 
           message: "Checked In successfully at " + now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) + ". Check-Out required to be marked present.", 
           type: "in", 

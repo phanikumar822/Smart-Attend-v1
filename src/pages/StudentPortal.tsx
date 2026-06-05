@@ -27,6 +27,7 @@ export default function StudentPortal() {
   const [matchedStudent, setMatchedStudent] = useState<any>(null);
   const [isLoadedStudents, setIsLoadedStudents] = useState(false);
   const [scanMode, setScanMode] = useState<'single' | 'batch'>('single');
+  const [livenessEnabled, setLivenessEnabled] = useState(true);
   const recentlyMarkedRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
@@ -163,7 +164,7 @@ export default function StudentPortal() {
     let active = true;
     let processing = false;
 
-    const EAR_THRESHOLD = 0.26;
+    const EAR_THRESHOLD = 0.28;
     const calculateEAR = (eye: faceapi.Point[]) => {
       const v1 = Math.sqrt(Math.pow(eye[1].x - eye[5].x, 2) + Math.pow(eye[1].y - eye[5].y, 2));
       const v2 = Math.sqrt(Math.pow(eye[2].x - eye[4].x, 2) + Math.pow(eye[2].y - eye[4].y, 2));
@@ -182,8 +183,12 @@ export default function StudentPortal() {
             .withFaceLandmarks();
 
           if (detection && active) {
-            setStatus('blink_required');
-            setHasBlinked(false);
+            if (livenessEnabled) {
+              setStatus('blink_required');
+              setHasBlinked(false);
+            } else {
+              setStatus('matching');
+            }
           }
         } 
         
@@ -417,7 +422,7 @@ export default function StudentPortal() {
     return () => {
       active = false;
     };
-  }, [isScanning, status, students, scanMode]);
+  }, [isScanning, status, students, scanMode, livenessEnabled]);
 
   if (error) return <div className="text-center py-20 text-destructive">{error}</div>;
 
@@ -432,7 +437,7 @@ export default function StudentPortal() {
 
   const steps = [
     { label: 'Detection', active: status !== 'idle' },
-    { label: 'Liveness', active: (status === 'blink_required' || status === 'matching' || status === 'matched') && scanMode === 'single' },
+    ...(livenessEnabled && scanMode === 'single' ? [{ label: 'Liveness', active: (status === 'blink_required' || status === 'matching' || status === 'matched') }] : []),
     { label: 'Matching', active: status === 'matching' || status === 'matched' || scanMode === 'batch' },
     { label: 'Success', active: status === 'matched' }
   ];
@@ -521,32 +526,51 @@ export default function StudentPortal() {
                       </div>
                     )}
                     
-                    {/* Scan Mode Toggle */}
-                    <div className="absolute top-6 left-6 flex bg-black/60 backdrop-blur-md border border-white/10 p-1.5 rounded-xl z-30">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setScanMode('single')}
-                        className={`text-[9px] uppercase tracking-widest font-black rounded-lg h-7 px-3 transition-all ${
-                          scanMode === 'single'
-                            ? 'bg-primary text-primary-foreground font-black shadow-lg hover:bg-primary'
-                            : 'text-muted-foreground hover:text-white hover:bg-transparent'
-                        }`}
-                      >
-                        Single
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setScanMode('batch')}
-                        className={`text-[9px] uppercase tracking-widest font-black rounded-lg h-7 px-3 transition-all ${
-                          scanMode === 'batch'
-                            ? 'bg-primary text-primary-foreground font-black shadow-lg hover:bg-primary'
-                            : 'text-muted-foreground hover:text-white hover:bg-transparent'
-                        }`}
-                      >
-                        Batch
-                      </Button>
+                    {/* Scan Mode & Liveness Toggles */}
+                    <div className="absolute top-6 left-6 flex gap-3 z-30">
+                      <div className="flex bg-black/60 backdrop-blur-md border border-white/10 p-1.5 rounded-xl">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setScanMode('single')}
+                          className={`text-[9px] uppercase tracking-widest font-black rounded-lg h-7 px-3 transition-all ${
+                            scanMode === 'single'
+                              ? 'bg-primary text-primary-foreground font-black shadow-lg hover:bg-primary'
+                              : 'text-muted-foreground hover:text-white hover:bg-transparent'
+                          }`}
+                        >
+                          Single
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setScanMode('batch')}
+                          className={`text-[9px] uppercase tracking-widest font-black rounded-lg h-7 px-3 transition-all ${
+                            scanMode === 'batch'
+                              ? 'bg-primary text-primary-foreground font-black shadow-lg hover:bg-primary'
+                              : 'text-muted-foreground hover:text-white hover:bg-transparent'
+                          }`}
+                        >
+                          Batch
+                        </Button>
+                      </div>
+
+                      {scanMode === 'single' && (
+                        <div className="flex bg-black/60 backdrop-blur-md border border-white/10 p-1.5 rounded-xl">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setLivenessEnabled(!livenessEnabled)}
+                            className={`text-[9px] uppercase tracking-widest font-black rounded-lg h-7 px-3 transition-all ${
+                              livenessEnabled
+                                ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/30 hover:bg-amber-500'
+                                : 'text-muted-foreground hover:text-white hover:bg-transparent'
+                            }`}
+                          >
+                            Liveness: {livenessEnabled ? 'ON' : 'OFF'}
+                          </Button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="absolute bottom-6 left-6 flex gap-4 pointer-events-none z-10">
@@ -696,7 +720,7 @@ export default function StudentPortal() {
                 </div>
 
                 {/* Verification Progress Steps */}
-                <div className="grid grid-cols-4 gap-2 text-center">
+                <div className={`grid gap-2 text-center ${steps.length === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
                   {steps.map((s, idx) => (
                     <div key={idx} className="flex flex-col items-center gap-2">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center border font-mono text-xs font-bold transition-all duration-300 ${
