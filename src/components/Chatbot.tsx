@@ -43,12 +43,29 @@ export default function Chatbot({ students, analytics, session }: { students: an
         !session?.presentStudents?.some((id: any) => (id._id || id) === s._id)
       ) || [];
       
+      const scanLogs = session?.scans?.map((scan) => {
+        const student = students?.find(s => s._id.toString() === (scan.studentId?._id || scan.studentId || "").toString());
+        if (!student) return null;
+        
+        const inTimeStr = scan.inTime 
+          ? new Date(scan.inTime).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) 
+          : 'N/A';
+        const outTimeStr = scan.outTime 
+          ? new Date(scan.outTime).toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) 
+          : 'No Out-Scan';
+          
+        return `- ${student.name} (${student.rollNo}): Check-In: ${inTimeStr} | Check-Out: ${outTimeStr}`;
+      }).filter(Boolean).join('\n') || 'None';
+      
       const context = `
         Attendance Data Summary:
         - Students Enrolled: ${students?.length || 0}
         - Students Present: ${currentPresentCount}
         - Students Absent: ${currentAbsentees.length}
         - Absent Names: ${currentAbsentees.slice(0, 10).map(s => s.name).join(', ')}
+        
+        Student Scan Timings (In/Out Times):
+        ${scanLogs}
       `;
 
       console.log("Sending chat request...");
