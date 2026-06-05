@@ -24,6 +24,7 @@ export default function AdminDashboard() {
   const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'high' | 'low'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
+  const [chartType, setChartType] = useState<'volume' | 'rate' | 'distribution'>('volume');
   const [minGapHours, setMinGapHours] = useState<number>(1);
 
   // Reset to page 1 when search or filter changes
@@ -168,6 +169,48 @@ export default function AdminDashboard() {
     { name: 'Present', value: presentCount },
     { name: 'Absent', value: absentCount }
   ] : [];
+
+  const rateData = analytics?.dailyData?.map((d: any) => {
+    const total = d.present + d.absent;
+    const rate = total > 0 ? (d.present / total) * 100 : 0;
+    return {
+      date: d.date,
+      rate: parseFloat(rate.toFixed(1)),
+      target: 75
+    };
+  }) || [];
+
+  const getDistributionData = () => {
+    const hoursMap = {
+      '08 AM': 0, '09 AM': 0, '10 AM': 0, '11 AM': 0,
+      '12 PM': 0, '01 PM': 0, '02 PM': 0, '03 PM': 0, '04 PM': 0
+    };
+    
+    session?.scans?.forEach((scan: any) => {
+      if (!scan.inTime) return;
+      const hour = new Date(scan.inTime).getHours();
+      let label = '';
+      if (hour === 8) label = '08 AM';
+      else if (hour === 9) label = '09 AM';
+      else if (hour === 10) label = '10 AM';
+      else if (hour === 11) label = '11 AM';
+      else if (hour === 12) label = '12 PM';
+      else if (hour === 13) label = '01 PM';
+      else if (hour === 14) label = '02 PM';
+      else if (hour === 15) label = '03 PM';
+      else if (hour === 16) label = '04 PM';
+      
+      if (label && hoursMap[label] !== undefined) {
+        hoursMap[label]++;
+      }
+    });
+    
+    return Object.keys(hoursMap).map(key => ({
+      hour: key,
+      scans: hoursMap[key]
+    }));
+  };
+  const distributionData = getDistributionData();
 
   return (
     <div className="max-w-7xl mx-auto space-y-10 pb-20">
@@ -594,32 +637,96 @@ export default function AdminDashboard() {
 
         <TabsContent value="analytics" className="space-y-4">
           <Card className="formal-card border-white/10">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-white/5 pb-6">
+            <CardHeader className="flex flex-col md:flex-row md:items-center justify-between border-b border-white/5 pb-6 gap-4">
               <div>
                 <CardTitle className="text-primary font-heading text-2xl">Evolutionary Metrics</CardTitle>
                 <CardDescription className="text-muted-foreground uppercase text-[10px] tracking-widest font-mono">Temporal progression analysis</CardDescription>
               </div>
-              {session?.sessionStatus === 'active' && (
-                <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-1.5 rounded-full">
-                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                  <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Neural Live Link</span>
-                </div>
-              )}
+              <div className="flex bg-black/40 border border-white/5 p-1 rounded-xl self-start md:self-auto">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setChartType('volume')}
+                  className={"text-[9px] uppercase tracking-widest font-black rounded-lg h-7 px-3 transition-all " + (
+                    chartType === 'volume'
+                      ? 'bg-primary text-primary-foreground font-black shadow-lg hover:bg-primary'
+                      : 'text-muted-foreground hover:text-white hover:bg-transparent'
+                  )}
+                >
+                  Volume
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setChartType('rate')}
+                  className={"text-[9px] uppercase tracking-widest font-black rounded-lg h-7 px-3 transition-all " + (
+                    chartType === 'rate'
+                      ? 'bg-primary text-primary-foreground font-black shadow-lg hover:bg-primary'
+                      : 'text-muted-foreground hover:text-white hover:bg-transparent'
+                  )}
+                >
+                  Rate (%)
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setChartType('distribution')}
+                  className={"text-[9px] uppercase tracking-widest font-black rounded-lg h-7 px-3 transition-all " + (
+                    chartType === 'distribution'
+                      ? 'bg-primary text-primary-foreground font-black shadow-lg hover:bg-primary'
+                      : 'text-muted-foreground hover:text-white hover:bg-transparent'
+                  )}
+                >
+                  Peak times
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="h-[450px] p-6">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={analytics?.dailyData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="date" stroke="#cbd5e1" fontSize={11} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
-                  <YAxis stroke="#cbd5e1" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip 
-                    cursor={{fill: 'rgba(255,255,255,0.02)'}}
-                    contentStyle={{ backgroundColor: '#0a0c10', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', color: '#ffffff' }}
-                  />
-                  <Bar dataKey="present" fill="#818cf8" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="absent" fill="#f43f5e" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {chartType === 'volume' && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={analytics?.dailyData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="date" stroke="#cbd5e1" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#cbd5e1" fontSize={11} tickLine={false} axisLine={false} />
+                    <Tooltip 
+                      cursor={{fill: 'rgba(255,255,255,0.02)'}}
+                      contentStyle={{ backgroundColor: '#0a0c10', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', color: '#ffffff' }}
+                    />
+                    <Bar dataKey="present" fill="#818cf8" radius={[6, 6, 0, 0]} name="Present" />
+                    <Bar dataKey="absent" fill="#f43f5e" radius={[6, 6, 0, 0]} name="Absent" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+
+              {chartType === 'rate' && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={rateData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="date" stroke="#cbd5e1" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#cbd5e1" fontSize={11} tickLine={false} axisLine={false} unit="%" domain={[0, 100]} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#0a0c10', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', color: '#ffffff' }}
+                    />
+                    <Line type="monotone" dataKey="rate" stroke="#818cf8" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Attendance Rate" />
+                    <Line type="monotone" dataKey="target" stroke="#f43f5e" strokeWidth={2} strokeDasharray="5 5" dot={false} activeDot={false} name="Target Threshold (75%)" />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+
+              {chartType === 'distribution' && (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={distributionData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="hour" stroke="#cbd5e1" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#cbd5e1" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <Tooltip 
+                      cursor={{fill: 'rgba(255,255,255,0.02)'}}
+                      contentStyle={{ backgroundColor: '#0a0c10', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', color: '#ffffff' }}
+                    />
+                    <Bar dataKey="scans" fill="#00f2ff" radius={[6, 6, 0, 0]} name="Check-in Count" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
