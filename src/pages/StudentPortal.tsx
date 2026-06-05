@@ -286,7 +286,7 @@ export default function StudentPortal() {
             animate={{ opacity: 1, x: 0 }}
             className="lg:col-span-7"
           >
-            <Card className="formal-card border-white/5 bg-white/[0.02] overflow-hidden relative aspect-video flex flex-col justify-center items-center">
+            <Card className="formal-card border-white/5 bg-white/[0.02] overflow-hidden relative aspect-square md:aspect-video flex flex-col justify-center items-center">
               <CardContent className="p-0 w-full h-full relative flex items-center justify-center">
                 {!isScanning ? (
                   <div className="flex flex-col items-center gap-6 p-8">
@@ -316,7 +316,7 @@ export default function StudentPortal() {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/80" />
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="w-72 h-80 border border-primary/40 rounded-[35%_35%_45%_45%] shadow-[0_0_50px_rgba(99,102,241,0.2)] relative overflow-hidden backdrop-blur-[2px]">
+                      <div className="w-[60%] h-[75%] max-w-[280px] max-h-[320px] border border-primary/40 rounded-[35%_35%_45%_45%] shadow-[0_0_50px_rgba(99,102,241,0.2)] relative overflow-hidden backdrop-blur-[2px]">
                         <div className="absolute w-full h-[2px] bg-primary shadow-[0_0_20px_#6366f1] animate-scan" style={{ top: '-100%' }} />
                         <div className="absolute inset-0 border-[20px] border-black/40 blur-xl scale-110" />
                       </div>

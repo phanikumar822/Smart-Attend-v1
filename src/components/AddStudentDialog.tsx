@@ -172,12 +172,12 @@ export default function AddStudentDialog({ onStudentAdded }: { onStudentAdded: (
           
           <div className="grid gap-2">
             <Label className="text-xs font-bold uppercase tracking-widest text-[#94a3b8]">Face Capture</Label>
-            <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-white/10 flex items-center justify-center">
+            <div className="relative aspect-square md:aspect-video bg-black rounded-lg overflow-hidden border border-white/10 flex items-center justify-center">
               {isCapturing ? (
                 <>
                   <video ref={videoRef} autoPlay muted className="w-full h-full object-cover opacity-70" />
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-32 h-40 border border-[#00f2ff]/50 rounded-[50%_50%_40%_40%] shadow-[0_0_15px_rgba(0,242,255,0.2)]" />
+                    <div className="w-[50%] h-[70%] max-w-[150px] max-h-[200px] border border-[#00f2ff]/50 rounded-[50%_50%_40%_40%] shadow-[0_0_15px_rgba(0,242,255,0.2)]" />
                   </div>
                   <div className="absolute inset-x-0 bottom-4 flex justify-center pointer-events-none">
                     <div className="bg-[#00f2ff]/20 border border-[#00f2ff] text-[#00f2ff] text-xs font-black tracking-widest uppercase px-4 py-2 rounded-full animate-pulse shadow-lg backdrop-blur-md">
