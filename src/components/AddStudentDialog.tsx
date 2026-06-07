@@ -19,7 +19,9 @@ export default function AddStudentDialog({ onStudentAdded }: { onStudentAdded: (
   const [isCapturing, setIsCapturing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [faceDescriptor, setFaceDescriptor] = useState<number[] | null>(null);
+  const [enrollProgress, setEnrollProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const samplesRef = useRef<number[][]>([]);
 
   const startCamera = async () => {
     setIsCapturing(true);
@@ -56,26 +58,46 @@ export default function AddStudentDialog({ onStudentAdded }: { onStudentAdded: (
   useEffect(() => {
     let active = true;
     let detectionInterval: any = null;
+    samplesRef.current = [];
+    setEnrollProgress(0);
 
     const detectAndCapture = async () => {
       if (!isCapturing || !videoRef.current || !active) return;
       try {
         const detection = await faceapi
-          .detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+          .detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.65 }))
           .withFaceLandmarks()
           .withFaceDescriptor();
 
         if (detection && active) {
-          setFaceDescriptor(Array.from(detection.descriptor));
-          toast.success('Face detected and registered automatically!');
-          
-          // Stop camera
-          if (videoRef.current && videoRef.current.srcObject) {
-            const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => track.stop());
+          const descriptor = Array.from(detection.descriptor);
+          samplesRef.current.push(descriptor);
+          const count = samplesRef.current.length;
+          setEnrollProgress(count);
+
+          toast.success(`Biometric sample ${count}/5 captured...`);
+
+          if (count >= 5) {
+            // Compute average descriptor
+            const avg = new Array(128).fill(0);
+            for (let i = 0; i < 128; i++) {
+              let sum = 0;
+              for (let j = 0; j < 5; j++) {
+                sum += samplesRef.current[j][i];
+              }
+              avg[i] = sum / 5;
+            }
+
+            setFaceDescriptor(avg);
+            toast.success('Face registered successfully with multi-sample averaging!');
+            
+            // Stop camera
+            if (videoRef.current && videoRef.current.srcObject) {
+              const stream = videoRef.current.srcObject as MediaStream;              stream.getTracks().forEach(track => track.stop());
+            }
+            setIsCapturing(false);
+            active = false;
           }
-          setIsCapturing(false);
-          active = false;
         }
       } catch (err) {
         console.error('Auto face detection error:', err);
@@ -83,7 +105,7 @@ export default function AddStudentDialog({ onStudentAdded }: { onStudentAdded: (
     };
 
     if (isCapturing) {
-      detectionInterval = setInterval(detectAndCapture, 400);
+      detectionInterval = setInterval(detectAndCapture, 500);
     }
 
     return () => {
@@ -181,7 +203,7 @@ export default function AddStudentDialog({ onStudentAdded }: { onStudentAdded: (
                   </div>
                   <div className="absolute inset-x-0 bottom-4 flex justify-center pointer-events-none">
                     <div className="bg-[#00f2ff]/20 border border-[#00f2ff] text-[#00f2ff] text-xs font-black tracking-widest uppercase px-4 py-2 rounded-full animate-pulse shadow-lg backdrop-blur-md">
-                      Scanning... Keep Still
+                      {enrollProgress > 0 ? `Capturing: ${enrollProgress * 20}%` : 'Scanning... Keep Still'}
                     </div>
                   </div>
                 </>

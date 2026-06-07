@@ -25,6 +25,8 @@ export default function StudentPortal() {
   const [status, setStatus] = useState<'idle' | 'awaiting_face' | 'blink_required' | 'matching' | 'matched' | 'error'>('idle');
   const [hasBlinked, setHasBlinked] = useState(false);
   const [matchedStudent, setMatchedStudent] = useState<any>(null);
+  const [tempMatchedStudent, setTempMatchedStudent] = useState<any>(null);
+  const [blinkStartTime, setBlinkStartTime] = useState<number>(0);
   const [isLoadedStudents, setIsLoadedStudents] = useState(false);
   const [scanMode, setScanMode] = useState<'single' | 'batch'>('single');
   const [livenessEnabled, setLivenessEnabled] = useState(true);
@@ -157,6 +159,23 @@ export default function StudentPortal() {
     setIsScanning(false);
     setStatus('idle');
     setMatchedStudent(null);
+    setTempMatchedStudent(null);
+  };
+
+  const markAttendance = async (rollNo: string, name: string) => {
+    try {
+      if (navigator.onLine) {
+        await api.post('/attendance/mark', { rollNo });
+        toast.success(`Attendance marked successfully for ${name}!`);
+        const sessionRes = await api.get('/attendance/session');
+        setSession(sessionRes.data);
+      } else {
+        await queueOfflineScan(rollNo);
+        toast.info(`Offline Mode: Scan queued for ${name}`);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to record attendance');
+    }
   };
 
   useEffect(() => {
@@ -180,48 +199,10 @@ export default function StudentPortal() {
         if (status === 'awaiting_face') {
           const detection = await faceapi
             .detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
-            .withFaceLandmarks();
-
-          if (detection && active) {
-            if (livenessEnabled) {
-              setStatus('blink_required');
-              setHasBlinked(false);
-            } else {
-              setStatus('matching');
-            }
-          }
-        } 
-        
-        else if (status === 'blink_required') {
-          const detection = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
-            .withFaceLandmarks();
-
-          if (!detection && active) {
-            setStatus('awaiting_face');
-          } else if (detection && active) {
-            const landmarks = detection.landmarks;
-            const leftEAR = calculateEAR(landmarks.getLeftEye());
-            const rightEAR = calculateEAR(landmarks.getRightEye());
-            const avgEAR = (leftEAR + rightEAR) / 2;
-
-            if (avgEAR < EAR_THRESHOLD) {
-              setHasBlinked(true);
-              setStatus('matching');
-            }
-          }
-        } 
-        
-        else if (status === 'matching') {
-          const detection = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
             .withFaceLandmarks()
             .withFaceDescriptor();
 
-          if (!detection && active) {
-            toast.error('Face lost during identity check.');
-            setStatus('awaiting_face');
-          } else if (detection && active) {
+          if (detection && active) {
             const validStudents = students.filter((s: any) => s.faceDescriptor && s.faceDescriptor.length > 0);
             if (validStudents.length === 0) {
               toast.error('No registered face profiles found.');
@@ -234,54 +215,87 @@ export default function StudentPortal() {
               new faceapi.LabeledFaceDescriptors(s.rollNo, [new Float32Array(s.faceDescriptor)])
             );
 
-            const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.55);
+            const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.6);
             const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
 
             if (bestMatch.label === 'unknown') {
-              toast.error('Identity verification failed. Unknown face.');
-              speak('Access denied. Unknown profile.');
-              setStatus('error');
-              setTimeout(() => {
-                if (active && scanMode === 'single') {
-                  setStatus('awaiting_face');
-                  setHasBlinked(false);
-                }
-              }, 2500);
+              const now = Date.now();
+              if (!recentlyMarkedRef.current['__unknown_toast'] || now - recentlyMarkedRef.current['__unknown_toast'] > 3000) {
+                toast.error('Identity verification failed. Unknown face.');
+                recentlyMarkedRef.current['__unknown_toast'] = now;
+              }
             } else {
               const matchedRollNo = bestMatch.label;
-              const matchedStudentInfo = students.find((s: any) => s.rollNo === matchedRollNo);
+              const student = students.find((s: any) => s.rollNo === matchedRollNo);
 
-              if (!matchedStudentInfo) {
-                toast.error('Internal matching error.');
-                setStatus('error');
-                setTimeout(() => {
-                  if (active && scanMode === 'single') {
-                    setStatus('awaiting_face');
-                    setHasBlinked(false);
-                  }
-                }, 2500);
-              } else {
-                setMatchedStudent(matchedStudentInfo);
-                setStatus('matched');
-                speak(`Welcome, ${matchedStudentInfo.name}!`);
+              if (student) {
+                setTempMatchedStudent(student);
+                if (livenessEnabled) {
+                  setStatus('blink_required');
+                  setHasBlinked(false);
+                  setBlinkStartTime(Date.now());
+                  speak(`Hello ${student.name}. Please blink to mark attendance.`);
+                } else {
+                  setMatchedStudent(student);
+                  setStatus('matched');
+                  speak(`Welcome, ${student.name}!`);
+                  await markAttendance(student.rollNo, student.name);
 
-                try {
-                  if (navigator.onLine) {
-                    await api.post('/attendance/mark', { rollNo: matchedRollNo });
-                    toast.success(`Attendance marked successfully for ${matchedStudentInfo.name}!`);
-                    const sessionRes = await api.get('/attendance/session');
-                    setSession(sessionRes.data);
-                  } else {
-                    await queueOfflineScan(matchedRollNo);
-                    toast.info(`Offline Mode: Scan queued for ${matchedStudentInfo.name}`);
-                  }
-                } catch (err: any) {
-                  toast.error(err.response?.data?.error || 'Failed to record attendance');
+                  setTimeout(() => {
+                    if (active && scanMode === 'single') {
+                      setMatchedStudent(null);
+                      setTempMatchedStudent(null);
+                      setHasBlinked(false);
+                      setStatus('awaiting_face');
+                    }
+                  }, 3500);
                 }
+              }
+            }
+          }
+        } 
+        
+        else if (status === 'blink_required') {
+          if (Date.now() - blinkStartTime > 6000) {
+            toast.error('Liveness verification timed out.');
+            setStatus('awaiting_face');
+            setTempMatchedStudent(null);
+            processing = false;
+            return;
+          }
+
+          const detection = await faceapi
+            .detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+            .withFaceLandmarks();
+
+          if (!detection && active) {
+            const now = Date.now();
+            if (!recentlyMarkedRef.current['__lost_toast'] || now - recentlyMarkedRef.current['__lost_toast'] > 3000) {
+              toast.error('Face lost during liveness check.');
+              recentlyMarkedRef.current['__lost_toast'] = now;
+            }
+            setStatus('awaiting_face');
+            setTempMatchedStudent(null);
+          } else if (detection && active) {
+            const landmarks = detection.landmarks;
+            const leftEAR = calculateEAR(landmarks.getLeftEye());
+            const rightEAR = calculateEAR(landmarks.getRightEye());
+            const avgEAR = (leftEAR + rightEAR) / 2;
+
+            if (avgEAR < EAR_THRESHOLD) {
+              setHasBlinked(true);
+              
+              if (tempMatchedStudent) {
+                const student = tempMatchedStudent;
+                setMatchedStudent(student);
+                setStatus('matched');
+                speak(`Welcome, ${student.name}!`);
+                await markAttendance(student.rollNo, student.name);
 
                 setTimeout(() => {
                   if (active && scanMode === 'single') {
                     setMatchedStudent(null);
+                    setTempMatchedStudent(null);
                     setHasBlinked(false);
                     setStatus('awaiting_face');
                   }
@@ -334,7 +348,7 @@ export default function StudentPortal() {
               const LabeledDescriptors = validStudents.map((s: any) => 
                 new faceapi.LabeledFaceDescriptors(s.rollNo, [new Float32Array(s.faceDescriptor)])
               );
-              const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.55);
+              const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.6);
 
               for (const det of resizedDetections) {
                 const box = det.detection.box;
@@ -412,8 +426,6 @@ export default function StudentPortal() {
       
       if (status === 'awaiting_face' || status === 'blink_required') {
         requestAnimationFrame(processSingleFrame);
-      } else if (status === 'matching') {
-        processSingleFrame();
       }
     } else if (scanMode === 'batch') {
       requestAnimationFrame(processBatchFrame);
@@ -437,8 +449,8 @@ export default function StudentPortal() {
 
   const steps = [
     { label: 'Detection', active: status !== 'idle' },
-    ...(livenessEnabled && scanMode === 'single' ? [{ label: 'Liveness', active: (status === 'blink_required' || status === 'matching' || status === 'matched') }] : []),
-    { label: 'Matching', active: status === 'matching' || status === 'matched' || scanMode === 'batch' },
+    ...(livenessEnabled && scanMode === 'single' ? [{ label: 'Liveness', active: (status === 'blink_required' || status === 'matched') }] : []),
+    { label: 'Matching', active: status === 'blink_required' || status === 'matched' || scanMode === 'batch' },
     { label: 'Success', active: status === 'matched' }
   ];
 
@@ -600,18 +612,10 @@ export default function StudentPortal() {
                             <motion.div 
                               initial={{ opacity: 0, y: -20 }}
                               animate={{ opacity: 1, y: 0 }}
-                              className="bg-amber-500/20 border border-amber-500 text-amber-500 px-8 py-3 rounded-full text-xs font-black tracking-[0.2em] uppercase animate-pulse backdrop-blur-xl shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+                              className="bg-amber-500/20 border border-amber-500 text-amber-500 px-8 py-3 rounded-full text-xs font-black tracking-[0.2em] uppercase animate-pulse backdrop-blur-xl shadow-[0_0_20px_rgba(245,158,11,0.3)] flex flex-col items-center gap-1"
                             >
-                              Action Required: Blink Eyes
-                            </motion.div>
-                          )}
-                          {status === 'matching' && (
-                            <motion.div 
-                              initial={{ opacity: 0, y: -20 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="bg-purple-500/20 border border-purple-500 text-purple-500 px-8 py-3 rounded-full text-xs font-black tracking-[0.2em] uppercase animate-pulse backdrop-blur-xl shadow-[0_0_20px_rgba(168,85,247,0.3)]"
-                            >
-                              Matching Identity
+                              <span>Blink to Confirm</span>
+                              {tempMatchedStudent && <span className="text-[10px] text-[#00f2ff] font-mono tracking-normal normal-case">Identity: {tempMatchedStudent.name}</span>}
                             </motion.div>
                           )}
                         </>
@@ -707,9 +711,6 @@ export default function StudentPortal() {
                   )}
                   {status === 'blink_required' && (
                     <span className="text-xl font-black uppercase text-amber-500 animate-pulse font-heading">Liveness Check</span>
-                  )}
-                  {status === 'matching' && (
-                    <span className="text-xl font-black uppercase text-purple-500 animate-pulse font-heading">Matching Identity</span>
                   )}
                   {status === 'matched' && (
                     <span className="text-xl font-black uppercase text-[#00ff88]">Authenticated</span>
