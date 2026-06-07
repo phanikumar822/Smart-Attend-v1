@@ -763,6 +763,12 @@ async function startServer() {
       const { minGapHours } = req.body;
       const gapValue = minGapHours !== undefined ? Number(minGapHours) : 1;
 
+      // Close any previous day's active sessions for this school/section to prevent orphaned active states
+      await Attendance.updateMany(
+        { sessionStatus: 'active', schoolId: req.schoolId, section: req.section, date: { $ne: today } },
+        { $set: { sessionStatus: 'ended' } }
+      );
+
       let session = await Attendance.findOne({ date: today, schoolId: req.schoolId, section: req.section });
       if (!session) {
         const allStudents = await Student.find({ schoolId: req.schoolId, section: req.section });
@@ -1050,10 +1056,10 @@ async function startServer() {
   app.post("/api/attendance/end", authenticate, async (req, res) => {
     console.log("[Attendance] Finalizing session...");
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const session = await Attendance.findOne({ date: today, schoolId: req.schoolId, section: req.section });
+      const session = await Attendance.findOne({ sessionStatus: 'active', schoolId: req.schoolId, section: req.section });
       
       if (session) {
+        const sessionDate = session.date;
         session.sessionStatus = 'ended';
 
         // Cleanup: Any student with a valid scan (Check-In) is counted present
@@ -1086,7 +1092,7 @@ async function startServer() {
           .map(s => s._id);
           
         await session.save();
-        console.log(`[Attendance] Session ${today} ended. Counted ${session.presentStudents.length} present.`);
+        console.log(`[Attendance] Session ${sessionDate} ended. Counted ${session.presentStudents.length} present.`);
         
         // Update attendance percentages efficiently
         const allSessions = await Attendance.find({ sessionStatus: 'ended', schoolId: req.schoolId, section: req.section });
@@ -1136,16 +1142,16 @@ async function startServer() {
               }
 
               // Send SMS (Fire and forget, internally logged)
-              sendSMS(student.phone, `Your child ${student.name} (${student.rollNo}) was absent on ${today}. Attendance: ${currentPercentage.toFixed(1)}%`);
+              sendSMS(student.phone, `Your child ${student.name} (${student.rollNo}) was absent on ${sessionDate}. Attendance: ${currentPercentage.toFixed(1)}%`);
   
               // Send Email
               const emailBody = `Hello ${student.name},<br/><br/>
-              You were marked absent today, ${today}.<br/>
+              You were marked absent today, ${sessionDate}.<br/>
               Your current attendance is ${currentPercentage.toFixed(1)}%. Please maintain regular attendance.`;
               
               sendEmail(
                 student.email, 
-                `Absence Notice: ${student.name} | ${today}`, 
+                `Absence Notice: ${student.name} | ${sessionDate}`, 
                 emailBody
               );
             }
