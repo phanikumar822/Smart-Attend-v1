@@ -61,7 +61,7 @@ export default function AddStudentDialog({ onStudentAdded }: { onStudentAdded: (
       if (!isCapturing || !videoRef.current || !active) return;
       try {
         const detection = await faceapi
-          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
+          .detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
           .withFaceLandmarks()
           .withFaceDescriptor();
 

@@ -179,7 +179,7 @@ export default function StudentPortal() {
       try {
         if (status === 'awaiting_face') {
           const detection = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
+            .detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
             .withFaceLandmarks();
 
           if (detection && active) {
@@ -194,7 +194,7 @@ export default function StudentPortal() {
         
         else if (status === 'blink_required') {
           const detection = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
+            .detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
             .withFaceLandmarks();
 
           if (!detection && active) {
@@ -214,7 +214,7 @@ export default function StudentPortal() {
         
         else if (status === 'matching') {
           const detection = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
+            .detectSingleFace(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
             .withFaceLandmarks()
             .withFaceDescriptor();
 
@@ -234,7 +234,7 @@ export default function StudentPortal() {
               new faceapi.LabeledFaceDescriptors(s.rollNo, [new Float32Array(s.faceDescriptor)])
             );
 
-            const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.7);
+            const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.55);
             const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
 
             if (bestMatch.label === 'unknown') {
@@ -306,7 +306,7 @@ export default function StudentPortal() {
 
       try {
         const detections = await faceapi
-          .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }))
+          .detectAllFaces(videoRef.current, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
           .withFaceLandmarks()
           .withFaceDescriptors();
 
@@ -334,7 +334,7 @@ export default function StudentPortal() {
               const LabeledDescriptors = validStudents.map((s: any) => 
                 new faceapi.LabeledFaceDescriptors(s.rollNo, [new Float32Array(s.faceDescriptor)])
               );
-              const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.7);
+              const faceMatcher = new faceapi.FaceMatcher(LabeledDescriptors, 0.55);
 
               for (const det of resizedDetections) {
                 const box = det.detection.box;
