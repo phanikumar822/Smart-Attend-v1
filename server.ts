@@ -204,8 +204,8 @@ async function startServer() {
   const Founder = mongoose.model("Founder", founderSchema);
 
   // Seed default founder if none exists or update to match env configuration
-  const founderEmail = process.env.FOUNDER_EMAIL || "founder@smartattend.ai";
-  const founderPassword = process.env.FOUNDER_PASSWORD || "founder123";
+  const founderEmail = cleanEnvVar(process.env.FOUNDER_EMAIL) || "founder@smartattend.ai";
+  const founderPassword = cleanEnvVar(process.env.FOUNDER_PASSWORD) || "founder123";
   const hashedPassword = await bcrypt.hash(founderPassword, 10);
   await Founder.findOneAndUpdate(
     { role: "founder" },
